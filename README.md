@@ -41,6 +41,8 @@ npm run test:e2e
 npm run check:deploy
 ```
 
-Browser checks and screenshot generation use Chromium. Set `CHROMIUM_BIN` to its executable or install the Playwright-matched browser with `npx playwright-core install chromium`. The tests run Rust code in workerd with local D1/R2, exercise a standard MCP client, compare the complete web/MCP inventories, and cover proof, opt-out, import, export and individual dispatch behavior. `npm run screenshots` regenerates the three images in the spec using an isolated synthetic workspace.
+Browser checks and screenshot generation use Chromium. Install the Playwright-matched browser with `npx playwright-core install chromium`, or point `CHROME_PATH` (browser checks) and `CHROMIUM_BIN` (screenshots) at an existing executable.
+
+The tests run Rust code in workerd with local D1 and R2, exercise a standard MCP client, compare the web and MCP operation inventories, and cover proof, opt-out, import, export and dispatch. Run `npm run screenshots` to regenerate the desktop and mobile gallery from a local workspace with synthetic data.
 
 The source and specification are MIT licensed. The console bundles Geist Sans v1.9.2 under the SIL Open Font License. [MIT license](LICENSE) · [Font license](public/fonts/geist-OFL.txt) · [Upstream font release](https://github.com/vercel/geist-font/releases/tag/v1.9.2)
