@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -137,6 +137,11 @@
   },
   "changelog": [
     {
+      "version": "0.2.1",
+      "date": "2026-11-25",
+      "note": "The console uses self-hosted Geist Sans for the wordmark, headings and counters. The gallery shows the publishing desk on desktop and mobile, the message editor and HTTP MCP connections."
+    },
+    {
       "version": "0.2.0",
       "date": "2026-11-25",
       "note": "General-purpose opt-in email publishing, independent send times, optional web handoff, MIT-licensed Rust reference implementation, full remote MCP access and screenshots of the running console."
@@ -151,7 +156,8 @@
     "screenshots": [
       "shots/overview.png",
       "shots/compose.png",
-      "shots/mcp.png"
+      "shots/mcp.png",
+      "shots/overview-mobile.png"
     ]
   }
 }

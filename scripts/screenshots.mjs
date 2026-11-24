@@ -37,15 +37,26 @@ try {
   const token=await submit('/oauth/token',{grant_type:'authorization_code',client_id:client,redirect_uri:callback,code_verifier:verifier,resource,code});
   if(!token.ok)throw new Error('Demo authorization exchange failed: '+token.status);
   browser=await chromium.launch({executablePath:executable,headless:true});
-  const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1,colorScheme:'light'});
+  const page = await browser.newPage({ deviceScaleFactor: 1, colorScheme: 'light' });
   await mkdir(output,{recursive:true});
-  for(const [name,route,label] of [['overview','overview','Publishing desk'],['compose','compose/'+id,''],['mcp','connections','']]){
-    await page.goto(app.origin+'/#/'+route);
-    await page.waitForFunction(()=>document.querySelector('main[aria-busy="false"]')?.querySelector('h1'));
-    await page.evaluate(()=>document.fonts.ready);
-    if(label)await page.getByRole('heading',{name:label,exact:true}).waitFor();
-    if(await page.getByText('Console unavailable',{exact:true}).count())throw new Error('Console failed to load.');
-    await page.screenshot({path:output+name+'.png',animations:'disabled'});
-    console.log(name,await page.locator('h1').innerText());
+  const desktop = { width: 1440, height: 1000 };
+  const captures = [
+    { name: 'overview', route: 'overview', heading: 'Publishing desk', viewport: desktop },
+    { name: 'compose', route: 'compose/' + id, heading: 'Message editor', viewport: desktop },
+    { name: 'mcp', route: 'connections', heading: 'MCP connections', viewport: desktop },
+    { name: 'overview-mobile', route: 'overview', heading: 'Publishing desk', viewport: { width: 390, height: 844 } },
+  ];
+  for (const {name, route, heading, viewport} of captures) {
+    await page.setViewportSize(viewport);
+    await page.goto(app.origin + '/#/' + route);
+    await page.locator('main[aria-busy="false"]')
+      .getByRole('heading', { level: 1, name: heading, exact: true }).waitFor();
+    const fontsLoaded = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return [...document.fonts].every(face => face.status !== 'error');
+    });
+    if (!fontsLoaded) throw new Error('A console font failed to load on ' + route);
+    await page.screenshot({ path: output + name + '.png', animations: 'disabled' });
+    console.log(name, heading);
   }
 }finally{await browser?.close();await app.close();}

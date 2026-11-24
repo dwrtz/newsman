@@ -62,4 +62,6 @@ Show sender readiness, queue health, provider limits and available recovery acti
 
 ## Screenshots
 
-The gallery shows a running instance with example data. The overview presents workspace activity, the composer edits an individual message, and the MCP connection screen gives a client the endpoint and access model. [Overview](shots/overview.png) · [Composer](shots/compose.png) · [HTTP MCP connection](shots/mcp.png)
+The reference console uses self-hosted Geist Sans. A bold lowercase wordmark identifies the workspace, semibold headings mark each screen, and tabular numerals keep counts aligned as values change.
+
+The gallery shows a running instance with example data. The publishing desk shows recent messages and delivery status on desktop and mobile. The editor opens an individual draft. The MCP connections screen gives a client the endpoint and shows its access. [Publishing desk](shots/overview.png) · [Message editor](shots/compose.png) · [HTTP MCP connections](shots/mcp.png) · [Mobile publishing desk](shots/overview-mobile.png)

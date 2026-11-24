@@ -1,16 +1,9 @@
 @font-face {
-  font-family: "DM Sans";
+  font-family: "Geist";
   font-style: normal;
-  font-weight: 400 700;
+  font-weight: 100 900;
   font-display: swap;
-  src: url("/fonts/dm-sans.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Instrument Serif";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/instrument-serif.woff2") format("woff2");
+  src: url("/fonts/geist.woff2") format("woff2");
 }
 :root {
   --paper: #faf9f5;
@@ -23,8 +16,7 @@
   --accent-dark: #25264b;
   --wash: #e7e5f5;
   --white: #fffefa;
-  --sans: "DM Sans", Arial, sans-serif;
-  --serif: "Instrument Serif", Georgia, serif;
+  --sans: "Geist", system-ui, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
   font: 15px/1.45 var(--sans);
   color: var(--ink);
@@ -123,9 +115,9 @@ h4 {
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
-  font: 43px/0.85 var(--serif);
-  letter-spacing: -2.8px;
+  gap: 9px;
+  font: 760 31px/1 var(--sans);
+  letter-spacing: -0.05em;
 }
 .brand-stop {
   color: var(--accent);
@@ -356,8 +348,9 @@ main:focus {
   color: var(--accent);
 }
 h1 {
-  font: normal clamp(51px, 5.1vw, 84px) / 0.98 var(--serif);
-  letter-spacing: -2.95px;
+  font: 650 clamp(38px, 4.2vw, 64px) / 1.06 var(--sans);
+  letter-spacing: -0.038em;
+  overflow-wrap: anywhere;
 }
 .lead {
   font-size: 14px;
@@ -463,8 +456,8 @@ h1 {
   background: #a69dec;
 }
 .feature h2 {
-  font: normal clamp(31px, 3.1vw, 55px) / 1.03 var(--serif);
-  letter-spacing: -1.3px;
+  font: 600 clamp(27px, 2.65vw, 42px) / 1.1 var(--sans);
+  letter-spacing: -0.03em;
   margin: 14px 0 8px;
   overflow-wrap: anywhere;
 }
@@ -552,8 +545,8 @@ h1 {
   gap: 12px;
 }
 .env-brand {
-  font: 28px/0.95 var(--serif);
-  letter-spacing: -1.7px;
+  font: 760 25px/1 var(--sans);
+  letter-spacing: -0.05em;
 }
 .env-stamp {
   height: 35px;
@@ -588,7 +581,7 @@ h1 {
   border-top: 1px solid #8f8676;
   padding-top: 7px;
   max-width: 78%;
-  font: 12px/1.15 var(--serif);
+  font: 500 11px/1.25 var(--sans);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -635,9 +628,9 @@ h1 {
   min-height: 17px;
 }
 .metric-value {
-  font: normal clamp(29px, 3.1vw, 50px) / 1 var(--serif);
+  font: 575 clamp(28px, 2.65vw, 42px) / 1.05 var(--sans);
   margin-top: 6px;
-  letter-spacing: -1px;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
 }
 .metric small {
@@ -674,8 +667,8 @@ h1 {
 .endpoint-box h2,
 .sub-panel h2,
 .result h2 {
-  font: normal 28px/1.05 var(--serif);
-  letter-spacing: -0.7px;
+  font: 650 22px/1.2 var(--sans);
+  letter-spacing: -0.022em;
 }
 .panel h3,
 .sub-panel h3 {
@@ -909,6 +902,7 @@ select {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .data-table th {
   font-size: 10px;
@@ -1019,7 +1013,8 @@ select {
   color: #c3c1e6;
 }
 .connection-card h2 {
-  font: 32px/1.05 var(--serif);
+  font: 600 28px/1.15 var(--sans);
+  letter-spacing: -0.035em;
   margin: 8px 0 16px;
 }
 .code-bar {
@@ -1187,7 +1182,8 @@ dialog::backdrop {
   margin-bottom: 16px;
 }
 .modal-header h2 {
-  font: 32px/1.05 var(--serif);
+  font: 650 26px/1.15 var(--sans);
+  letter-spacing: -0.035em;
 }
 .modal-body {
   font-size: 14px;
@@ -1251,6 +1247,10 @@ dialog::backdrop {
   .brand-row {
     padding: 25px 19px;
   }
+  .wordmark {
+    font-size: 28px;
+    gap: 7px;
+  }
   .sidebar-content {
     padding: 0 9px;
   }
@@ -1298,7 +1298,7 @@ dialog::backdrop {
     padding: 16px 18px;
   }
   .wordmark {
-    font-size: 35px;
+    font-size: 30px;
   }
   .brand-icon {
     transform: scale(0.88) skewY(-14deg);
@@ -1363,8 +1363,7 @@ dialog::backdrop {
     gap: 10px;
   }
   h1 {
-    font-size: 52px;
-    letter-spacing: -2px;
+    font-size: clamp(32px, 6.2vw, 40px);
   }
   .page-head .eyebrow {
     font-size: 9px;
@@ -1382,7 +1381,7 @@ dialog::backdrop {
     padding: 18px;
   }
   .feature h2 {
-    font-size: 31px;
+    font-size: clamp(24px, 4.5vw, 30px);
     margin: 9px 0 5px;
   }
   .feature .lead {
@@ -1482,7 +1481,7 @@ dialog::backdrop {
   .section-title,
   .form-panel h2,
   .sub-panel h2 {
-    font-size: 26px;
+    font-size: 21px;
   }
   .definition {
     grid-template-columns: minmax(75px, 0.5fr) 1fr;
@@ -1566,7 +1565,9 @@ dialog::backdrop {
   margin: 5px 0 12px;
 }
 .tool-tally strong {
-  font: 42px/1 var(--serif);
+  font: 575 38px/1.05 var(--sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
   color: var(--accent);
 }
 .tool-tally span,
