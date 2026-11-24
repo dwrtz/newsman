@@ -1,0 +1,3417 @@
+{
+ "format_version": 1,
+ "protocol_baseline": "2025-11-25",
+ "operator_path": "/mcp",
+ "reader_path": "/reader/mcp",
+ "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+ "schema_note": "At build time, use the named $defs to expand inputSchema and outputSchema for each MCP tool. Each emitted schema is self-contained, has object root type, and includes its transitive definitions. Object permissions, invariants and byte limits are further constrained in the companion contracts.",
+ "$defs": {
+  "id": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 128
+  },
+  "key": {
+   "type": "string",
+   "minLength": 8,
+   "maxLength": 160
+  },
+  "version": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 2147483647
+  },
+  "count": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 2147483647
+  },
+  "limit": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 100
+  },
+  "cursor": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 1024
+  },
+  "bool": {
+   "type": "boolean"
+  },
+  "timestamp": {
+   "type": "string",
+   "format": "date-time"
+  },
+  "email": {
+   "type": "string",
+   "format": "email",
+   "maxLength": 254
+  },
+  "url": {
+   "type": "string",
+   "format": "uri",
+   "maxLength": 2048
+  },
+  "hash": {
+   "type": "string",
+   "pattern": "^[a-f0-9]{64}$"
+  },
+  "name": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 160
+  },
+  "subject": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 180
+  },
+  "short": {
+   "type": "string",
+   "minLength": 0,
+   "maxLength": 500
+  },
+  "text": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 131072
+  },
+  "html": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 262144
+  },
+  "tag": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 64
+  },
+  "tags": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/tag"
+   },
+   "maxItems": 50
+  },
+  "labels": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/name"
+   },
+   "maxItems": 100
+  },
+  "status": {
+   "type": "string",
+   "enum": [
+    "pending",
+    "active",
+    "unsubscribed",
+    "held",
+    "suppressed",
+    "erased",
+    "test_only"
+   ]
+  },
+  "proof": {
+   "type": "string",
+   "minLength": 8,
+   "maxLength": 1024
+  },
+  "amount": {
+   "type": "number",
+   "minimum": 0
+  },
+  "code": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 80
+  },
+  "job_state": {
+   "type": "string",
+   "enum": [
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "needs_review"
+   ]
+  },
+  "format": {
+   "type": "string",
+   "enum": [
+    "csv",
+    "jsonl",
+    "json",
+    "html",
+    "text",
+    "image"
+   ]
+  },
+  "blob_kind": {
+   "type": "string",
+   "enum": [
+    "hero",
+    "audience_import",
+    "suppressions",
+    "send_history",
+    "issue_bundle",
+    "historical_metrics",
+    "consent_history"
+   ]
+  },
+  "scope": {
+   "type": "string",
+   "enum": [
+    "read",
+    "write",
+    "send",
+    "admin",
+    "offline_access"
+   ]
+  },
+  "scopes": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/scope"
+   },
+   "maxItems": 5
+  },
+  "bytes": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 65536
+  },
+  "ids": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/id"
+   },
+   "maxItems": 100
+  },
+  "clock": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 100
+  },
+  "revision": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "name": {
+     "$ref": "#/$defs/name"
+    }
+   },
+   "required": [
+    "id",
+    "version"
+   ],
+   "additionalProperties": false
+  },
+  "utm": {
+   "type": "object",
+   "properties": {
+    "utm_source": {
+     "$ref": "#/$defs/utm_value"
+    },
+    "utm_medium": {
+     "$ref": "#/$defs/utm_value"
+    },
+    "utm_campaign": {
+     "$ref": "#/$defs/utm_value"
+    },
+    "utm_content": {
+     "$ref": "#/$defs/utm_value"
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "filter": {
+   "type": "object",
+   "properties": {
+    "statuses": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/status"
+     },
+     "maxItems": 7
+    },
+    "tags_all": {
+     "$ref": "#/$defs/tags"
+    },
+    "tags_any": {
+     "$ref": "#/$defs/tags"
+    },
+    "campaign": {
+     "$ref": "#/$defs/utm_value"
+    },
+    "confirmed_since": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "confirmed_before": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "test_only": {
+     "$ref": "#/$defs/bool"
+    }
+   },
+   "required": [],
+   "additionalProperties": false
+  },
+  "settings": {
+   "type": "object",
+   "properties": {
+    "publication_name": {
+     "$ref": "#/$defs/name"
+    },
+    "time_zone": {
+     "$ref": "#/$defs/clock"
+    },
+    "public_origin": {
+     "$ref": "#/$defs/url"
+    },
+    "from_address": {
+     "$ref": "#/$defs/email"
+    },
+    "reply_to": {
+     "$ref": "#/$defs/email"
+    },
+    "postal_footer": {
+     "$ref": "#/$defs/short"
+    },
+    "consent_version": {
+     "$ref": "#/$defs/id"
+    },
+    "archive_lag_days": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 365
+    },
+    "click_tracking": {
+     "$ref": "#/$defs/bool"
+    },
+    "test_recipients": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/email"
+     },
+     "maxItems": 50
+    },
+    "send_budget": {
+     "$ref": "#/$defs/count"
+    }
+   },
+   "required": [
+    "publication_name",
+    "time_zone",
+    "public_origin",
+    "from_address",
+    "reply_to",
+    "postal_footer",
+    "consent_version",
+    "archive_lag_days",
+    "click_tracking",
+    "test_recipients",
+    "send_budget"
+   ],
+   "additionalProperties": false
+  },
+  "source": {
+   "type": "object",
+   "properties": {
+    "external_key": {
+     "$ref": "#/$defs/id"
+    },
+    "canonical_url": {
+     "$ref": "#/$defs/url"
+    },
+    "edition_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "archive_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "title": {
+     "$ref": "#/$defs/name"
+    },
+    "summary": {
+     "$ref": "#/$defs/short"
+    },
+    "html": {
+     "$ref": "#/$defs/html"
+    },
+    "hero_asset_id": {
+     "$ref": "#/$defs/id"
+    },
+    "hero_alt": {
+     "$ref": "#/$defs/short"
+    }
+   },
+   "required": [
+    "external_key",
+    "title",
+    "summary",
+    "html"
+   ],
+   "additionalProperties": false
+  },
+  "draft": {
+   "type": "object",
+   "properties": {
+    "title": {
+     "$ref": "#/$defs/name"
+    },
+    "subject": {
+     "$ref": "#/$defs/subject"
+    },
+    "preheader": {
+     "$ref": "#/$defs/short"
+    },
+    "html": {
+     "$ref": "#/$defs/html"
+    },
+    "plain_text": {
+     "$ref": "#/$defs/text"
+    },
+    "template_id": {
+     "$ref": "#/$defs/id"
+    },
+    "hero_asset_id": {
+     "$ref": "#/$defs/id"
+    },
+    "hero_alt": {
+     "$ref": "#/$defs/short"
+    },
+    "source": {
+     "$ref": "#/$defs/source"
+    }
+   },
+   "required": [
+    "title",
+    "subject",
+    "preheader",
+    "html",
+    "plain_text"
+   ],
+   "additionalProperties": false
+  },
+  "subscriber": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "email": {
+     "$ref": "#/$defs/email"
+    },
+    "status": {
+     "$ref": "#/$defs/status"
+    },
+    "tags": {
+     "$ref": "#/$defs/tags"
+    },
+    "first_touch": {
+     "$ref": "#/$defs/utm"
+    },
+    "confirmed_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "suppression_reason": {
+     "$ref": "#/$defs/code"
+    },
+    "evidence_kind": {
+     "$ref": "#/$defs/code"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "status",
+    "tags",
+    "first_touch"
+   ],
+   "additionalProperties": false
+  },
+  "event": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "kind": {
+     "$ref": "#/$defs/code"
+    },
+    "actor_id": {
+     "$ref": "#/$defs/id"
+    },
+    "object_id": {
+     "$ref": "#/$defs/id"
+    },
+    "source": {
+     "$ref": "#/$defs/code"
+    },
+    "reason": {
+     "$ref": "#/$defs/short"
+    }
+   },
+   "required": [
+    "id",
+    "at",
+    "kind"
+   ],
+   "additionalProperties": false
+  },
+  "operator": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "email": {
+     "$ref": "#/$defs/email"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "invited",
+      "active",
+      "removed"
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "email",
+    "version",
+    "state"
+   ],
+   "additionalProperties": false
+  },
+  "grant": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "operator_id": {
+     "$ref": "#/$defs/id"
+    },
+    "client": {
+     "$ref": "#/$defs/name"
+    },
+    "scopes": {
+     "$ref": "#/$defs/scopes"
+    },
+    "active": {
+     "$ref": "#/$defs/bool"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "expires_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "id",
+    "operator_id",
+    "client",
+    "scopes",
+    "active",
+    "version"
+   ],
+   "additionalProperties": false
+  },
+  "issue": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "draft": {
+     "$ref": "#/$defs/draft"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "draft",
+      "approved",
+      "historical",
+      "archived"
+     ]
+    },
+    "archive_verified_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "digest",
+    "draft",
+    "state"
+   ],
+   "additionalProperties": false
+  },
+  "issue_row": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "title": {
+     "$ref": "#/$defs/name"
+    },
+    "subject": {
+     "$ref": "#/$defs/subject"
+    },
+    "updated_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "state": {
+     "$ref": "#/$defs/code"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "title",
+    "subject",
+    "updated_at"
+   ],
+   "additionalProperties": false
+  },
+  "segment": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "name": {
+     "$ref": "#/$defs/name"
+    },
+    "filter": {
+     "$ref": "#/$defs/filter"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "filter",
+    "version"
+   ],
+   "additionalProperties": false
+  },
+  "template": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "name": {
+     "$ref": "#/$defs/name"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "html": {
+     "$ref": "#/$defs/html"
+    },
+    "plain_text": {
+     "$ref": "#/$defs/text"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "version",
+    "html",
+    "plain_text"
+   ],
+   "additionalProperties": false
+  },
+  "rendered": {
+   "type": "object",
+   "properties": {
+    "subject": {
+     "$ref": "#/$defs/subject"
+    },
+    "from_address": {
+     "$ref": "#/$defs/email"
+    },
+    "reply_to": {
+     "$ref": "#/$defs/email"
+    },
+    "preheader": {
+     "$ref": "#/$defs/short"
+    },
+    "html": {
+     "$ref": "#/$defs/html"
+    },
+    "plain_text": {
+     "$ref": "#/$defs/text"
+    },
+    "digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "warnings": {
+     "$ref": "#/$defs/labels"
+    }
+   },
+   "required": [
+    "subject",
+    "from_address",
+    "reply_to",
+    "preheader",
+    "html",
+    "plain_text",
+    "digest",
+    "warnings"
+   ],
+   "additionalProperties": false
+  },
+  "metric": {
+   "type": "object",
+   "properties": {
+    "label": {
+     "$ref": "#/$defs/name"
+    },
+    "value": {
+     "$ref": "#/$defs/amount"
+    },
+    "unit": {
+     "$ref": "#/$defs/code"
+    },
+    "denominator": {
+     "$ref": "#/$defs/count"
+    },
+    "unavailable_reason": {
+     "$ref": "#/$defs/short"
+    },
+    "source": {
+     "$ref": "#/$defs/code"
+    }
+   },
+   "required": [
+    "label",
+    "unit"
+   ],
+   "additionalProperties": false
+  },
+  "campaign": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "issue_id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "issue_digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "scheduled",
+      "sending",
+      "stopped",
+      "finished",
+      "needs_review"
+     ]
+    },
+    "due_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/metric"
+     },
+     "maxItems": 100
+    }
+   },
+   "required": [
+    "id",
+    "issue_id",
+    "version",
+    "issue_digest",
+    "state",
+    "due_at",
+    "counts"
+   ],
+   "additionalProperties": false
+  },
+  "attempt": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "campaign_id": {
+     "$ref": "#/$defs/id"
+    },
+    "subscriber_id": {
+     "$ref": "#/$defs/id"
+    },
+    "state": {
+     "$ref": "#/$defs/code"
+    },
+    "provider_id": {
+     "$ref": "#/$defs/id"
+    },
+    "updated_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "campaign_id",
+    "subscriber_id",
+    "state"
+   ],
+   "additionalProperties": false
+  },
+  "plan": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "issue_digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "eligibility_digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "expires_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "due_at": {
+     "$ref": "#/$defs/timestamp"
+    },
+    "subject": {
+     "$ref": "#/$defs/subject"
+    },
+    "from_address": {
+     "$ref": "#/$defs/email"
+    },
+    "reply_to": {
+     "$ref": "#/$defs/email"
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/metric"
+     },
+     "maxItems": 100
+    },
+    "audience_rule": {
+     "$ref": "#/$defs/filter"
+    },
+    "warnings": {
+     "$ref": "#/$defs/labels"
+    },
+    "cost": {
+     "$ref": "#/$defs/money"
+    }
+   },
+   "required": [
+    "id",
+    "digest",
+    "issue_digest",
+    "eligibility_digest",
+    "expires_at",
+    "due_at",
+    "subject",
+    "from_address",
+    "reply_to",
+    "counts",
+    "audience_rule",
+    "warnings",
+    "cost"
+   ],
+   "additionalProperties": false
+  },
+  "job": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "state": {
+     "$ref": "#/$defs/job_state"
+    },
+    "kind": {
+     "$ref": "#/$defs/code"
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/metric"
+     },
+     "maxItems": 100
+    },
+    "result_asset_id": {
+     "$ref": "#/$defs/id"
+    },
+    "error": {
+     "$ref": "#/$defs/short"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "state",
+    "kind",
+    "counts"
+   ],
+   "additionalProperties": false
+  },
+  "file": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "version": {
+     "$ref": "#/$defs/version"
+    },
+    "kind": {
+     "$ref": "#/$defs/code"
+    },
+    "size": {
+     "$ref": "#/$defs/count"
+    },
+    "sha256": {
+     "$ref": "#/$defs/hash"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "open",
+      "complete",
+      "expired"
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "kind",
+    "size",
+    "sha256",
+    "state"
+   ],
+   "additionalProperties": false
+  },
+  "import_plan": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "$ref": "#/$defs/id"
+    },
+    "digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "eligible_digest": {
+     "$ref": "#/$defs/hash"
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/metric"
+     },
+     "maxItems": 100
+    },
+    "diagnostics_asset_id": {
+     "$ref": "#/$defs/id"
+    },
+    "expires_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "id",
+    "digest",
+    "eligible_digest",
+    "counts",
+    "expires_at"
+   ],
+   "additionalProperties": false
+  },
+  "check": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "$ref": "#/$defs/name"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "ready",
+      "missing",
+      "warning",
+      "failed",
+      "unknown"
+     ]
+    },
+    "detail": {
+     "$ref": "#/$defs/short"
+    }
+   },
+   "required": [
+    "name",
+    "state",
+    "detail"
+   ],
+   "additionalProperties": false
+  },
+  "scope_reader": {
+   "type": "string",
+   "enum": [
+    "check_inbox",
+    "confirmed",
+    "already_handled",
+    "expired",
+    "unsubscribed",
+    "action_required"
+   ]
+  },
+  "reader_result": {
+   "type": "object",
+   "properties": {
+    "outcome": {
+     "$ref": "#/$defs/scope_reader"
+    },
+    "next_path": {
+     "$ref": "#/$defs/short"
+    }
+   },
+   "required": [
+    "outcome"
+   ],
+   "additionalProperties": false
+  },
+  "reader_config": {
+   "type": "object",
+   "properties": {
+    "publication_name": {
+     "$ref": "#/$defs/name"
+    },
+    "public_origin": {
+     "$ref": "#/$defs/url"
+    },
+    "archive_url": {
+     "$ref": "#/$defs/url"
+    },
+    "feed_url": {
+     "$ref": "#/$defs/url"
+    },
+    "consent_version": {
+     "$ref": "#/$defs/id"
+    },
+    "next_issue_at": {
+     "$ref": "#/$defs/timestamp"
+    }
+   },
+   "required": [
+    "publication_name",
+    "public_origin",
+    "consent_version"
+   ],
+   "additionalProperties": false
+  },
+  "audit_page": {
+   "type": "object",
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/event"
+     },
+     "maxItems": 100
+    },
+    "next_cursor": {
+     "$ref": "#/$defs/cursor"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "additionalProperties": false
+  },
+  "utm_value": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+  },
+  "money": {
+   "type": "object",
+   "properties": {
+    "currency": {
+     "const": "USD"
+    },
+    "ses_base": {
+     "$ref": "#/$defs/amount"
+    },
+    "estimated_messages": {
+     "$ref": "#/$defs/count"
+    }
+   },
+   "required": [
+    "currency",
+    "ses_base",
+    "estimated_messages"
+   ],
+   "additionalProperties": false
+  }
+ },
+ "operations": [
+  {
+   "name": "dashboard_get",
+   "view": "Overview",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Publication counts, current send, migration state and outstanding setup checks.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "metrics": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/metric"
+      },
+      "maxItems": 100
+     },
+     "checks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/check"
+      },
+      "maxItems": 100
+     },
+     "current_campaign_id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "metrics",
+     "checks"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "settings_get",
+   "view": "Settings",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "Read all editable publication settings and their revision.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "settings": {
+      "$ref": "#/$defs/settings"
+     },
+     "version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "settings",
+     "version"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "settings_update",
+   "view": "Settings",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Replace settings atomically. Verify sending identities before use.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "settings": {
+      "$ref": "#/$defs/settings"
+     }
+    },
+    "required": [
+     "key",
+     "expected_version",
+     "settings"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "health_get",
+   "view": "Operations",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "Read prerequisites, provider quota, queue lag, storage, feedback freshness, pause and recovery status.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "checks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/check"
+      },
+      "maxItems": 100
+     },
+     "metrics": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/metric"
+      },
+      "maxItems": 100
+     },
+     "paused": {
+      "$ref": "#/$defs/bool"
+     },
+     "version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "checks",
+     "metrics",
+     "paused",
+     "version"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "dispatch_set",
+   "view": "Operations",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Pause or resume after readiness checks, with an audited reason.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "paused": {
+      "$ref": "#/$defs/bool"
+     },
+     "reason": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [
+     "key",
+     "expected_version",
+     "paused",
+     "reason"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "operators_list",
+   "view": "Operators",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "List allowlist entries and bound identities.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/operator"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "operators_add",
+   "view": "Operators",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Invite an exact verified email.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "email": {
+      "$ref": "#/$defs/email"
+     }
+    },
+    "required": [
+     "key",
+     "email"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/operator"
+   }
+  },
+  {
+   "name": "operators_remove",
+   "view": "Operators",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Remove membership and end its grants, preserving a final bound operator.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "grants_list",
+   "view": "Connections",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "List delegated grant metadata.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/grant"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "grants_revoke",
+   "view": "Connections",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Revoke a client grant immediately.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "audit_list",
+   "view": "Audit",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "Page redacted command or object audit history.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     },
+     "object_id": {
+      "$ref": "#/$defs/id"
+     },
+     "since": {
+      "$ref": "#/$defs/timestamp"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/event"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "subscribers_list",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "List or search audience with a filter and stable cursor.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     },
+     "filter": {
+      "$ref": "#/$defs/filter"
+     },
+     "search": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/subscriber"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "subscriber_get",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Read a subscriber and their current eligibility.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/subscriber"
+   }
+  },
+  {
+   "name": "subscriber_history",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Page an individual's consent, provenance and suppression history.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/event"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "subscriber_tags_set",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Replace tags without altering consent.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "tags": {
+      "$ref": "#/$defs/tags"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "tags"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/subscriber"
+   }
+  },
+  {
+   "name": "subscriber_suppress",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Stop further marketing deliveries and record a reason.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "reason": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "reason"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/subscriber"
+   }
+  },
+  {
+   "name": "subscriber_erase",
+   "view": "Audience",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Erase personal data and retain only the documented minimum suppression record.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "reason": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "reason"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "segments_list",
+   "view": "Segments",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "List saved audience definitions.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/segment"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "segment_preview",
+   "view": "Segments",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Preview counts and a page of results for an unsaved audience filter.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "filter": {
+      "$ref": "#/$defs/filter"
+     },
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [
+     "filter"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "estimated": {
+      "$ref": "#/$defs/count"
+     },
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/subscriber"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "estimated",
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "segment_create",
+   "view": "Segments",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Save a named segment.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "name": {
+      "$ref": "#/$defs/name"
+     },
+     "filter": {
+      "$ref": "#/$defs/filter"
+     }
+    },
+    "required": [
+     "key",
+     "name",
+     "filter"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/segment"
+   }
+  },
+  {
+   "name": "segment_update",
+   "view": "Segments",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Change a saved segment revision.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "name": {
+      "$ref": "#/$defs/name"
+     },
+     "filter": {
+      "$ref": "#/$defs/filter"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "name",
+     "filter"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/segment"
+   }
+  },
+  {
+   "name": "segment_delete",
+   "view": "Segments",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Remove a saved segment, preserving previous campaign snapshots.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "templates_list",
+   "view": "Templates",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Find available template revisions.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/revision"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "template_get",
+   "view": "Templates",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Read email HTML, plain text and template metadata.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/template"
+   }
+  },
+  {
+   "name": "template_create",
+   "view": "Templates",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Create a named HTML and text template.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "name": {
+      "$ref": "#/$defs/name"
+     },
+     "html": {
+      "$ref": "#/$defs/html"
+     },
+     "plain_text": {
+      "$ref": "#/$defs/text"
+     }
+    },
+    "required": [
+     "key",
+     "name",
+     "html",
+     "plain_text"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/template"
+   }
+  },
+  {
+   "name": "template_update",
+   "view": "Templates",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Save a new revision of the template.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "name": {
+      "$ref": "#/$defs/name"
+     },
+     "html": {
+      "$ref": "#/$defs/html"
+     },
+     "plain_text": {
+      "$ref": "#/$defs/text"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "name",
+     "html",
+     "plain_text"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/template"
+   }
+  },
+  {
+   "name": "issues_list",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Find editions by title and status.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     },
+     "search": {
+      "$ref": "#/$defs/short"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "draft",
+       "approved",
+       "historical",
+       "archived"
+      ]
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/issue_row"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "issue_get",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Return the current draft, metadata and digest.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_create",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Create an editable draft with a stable issue ID.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "draft": {
+      "$ref": "#/$defs/draft"
+     }
+    },
+    "required": [
+     "key",
+     "draft"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_import",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Create or revise an edition from a staged site bundle. Include the current revision on replacement.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "asset_id": {
+      "$ref": "#/$defs/id"
+     },
+     "external_key": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "source_digest": {
+      "$ref": "#/$defs/hash"
+     }
+    },
+    "required": [
+     "key",
+     "asset_id",
+     "external_key",
+     "source_digest"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_update",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Save editor changes as a revision.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "draft": {
+      "$ref": "#/$defs/draft"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "draft"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_versions",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "List previous draft revisions and digests.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/issue_row"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "issue_version_get",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Return a selected complete revision.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "id",
+     "version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_restore",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Restore an earlier revision as a new draft.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "restore_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "restore_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/issue"
+   }
+  },
+  {
+   "name": "issue_render",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Preview exact HTML, plain text, headers, warnings and digest with sample recipient substitutions.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "id",
+     "version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/rendered"
+   }
+  },
+  {
+   "name": "issue_archive",
+   "view": "Issues",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Archive an editorial draft without deleting its sent history.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/revision"
+   }
+  },
+  {
+   "name": "archive_bundle",
+   "view": "Archive",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Prepare an archive handoff with stable IDs for the host site's authorized publication workflow.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "archive_verify",
+   "view": "Archive",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Check the configured public origin and feed for this release and record the result.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "campaigns_list",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "List active and historical campaign receipts.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/campaign"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "campaign_get",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Show the current state and delivery totals.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/campaign"
+   }
+  },
+  {
+   "name": "send_test",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "send",
+   "mode": "command",
+   "description": "Send a labeled proof to a configured test recipient or local sink.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "issue_id": {
+      "$ref": "#/$defs/id"
+     },
+     "issue_version": {
+      "$ref": "#/$defs/version"
+     },
+     "recipient": {
+      "$ref": "#/$defs/email"
+     }
+    },
+    "required": [
+     "key",
+     "issue_id",
+     "issue_version",
+     "recipient"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "send_prepare",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "send",
+   "mode": "command",
+   "description": "Freeze and review candidate audience, issue digest, counts, schedule and budget. No mail is dispatched.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "issue_id": {
+      "$ref": "#/$defs/id"
+     },
+     "issue_version": {
+      "$ref": "#/$defs/version"
+     },
+     "audience": {
+      "$ref": "#/$defs/filter"
+     },
+     "due_at": {
+      "$ref": "#/$defs/timestamp"
+     }
+    },
+    "required": [
+     "key",
+     "issue_id",
+     "issue_version",
+     "audience"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/plan"
+   }
+  },
+  {
+   "name": "send_commit",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "send",
+   "mode": "command",
+   "description": "Accept the reviewed plan once, now or at its due time.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "plan_id": {
+      "$ref": "#/$defs/id"
+     },
+     "plan_digest": {
+      "$ref": "#/$defs/hash"
+     }
+    },
+    "required": [
+     "key",
+     "plan_id",
+     "plan_digest"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/campaign"
+   }
+  },
+  {
+   "name": "send_cancel",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "send",
+   "mode": "command",
+   "description": "Cancel the scheduled send or stop remaining recipient work.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "reason": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "reason"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/campaign"
+   }
+  },
+  {
+   "name": "attempts_list",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Inspect individual attempts and filter ambiguous deliveries.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "campaign_id": {
+      "$ref": "#/$defs/id"
+     },
+     "state": {
+      "$ref": "#/$defs/code"
+     },
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [
+     "campaign_id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/attempt"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "attempt_resolve",
+   "view": "Campaigns",
+   "surface": "operator",
+   "scope": "send",
+   "mode": "command",
+   "description": "Close an ambiguous delivery after reconciliation. Never resend from an unknown result.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "outcome": {
+      "type": "string",
+      "enum": [
+       "accepted_with_evidence",
+       "permanent_skip",
+       "proven_not_submitted"
+      ]
+     },
+     "evidence_note": {
+      "$ref": "#/$defs/short"
+     },
+     "provider_id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "outcome",
+     "evidence_note"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/attempt"
+   }
+  },
+  {
+   "name": "report_get",
+   "view": "Reports",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Page issue, link, acquisition or cohort metrics with window, units, labels and denominators.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "edition",
+       "links",
+       "acquisition",
+       "cohort",
+       "usage"
+      ]
+     },
+     "from": {
+      "$ref": "#/$defs/timestamp"
+     },
+     "to": {
+      "$ref": "#/$defs/timestamp"
+     },
+     "issue_id": {
+      "$ref": "#/$defs/id"
+     },
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [
+     "kind",
+     "from",
+     "to"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/metric"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "export_create",
+   "view": "Transfers",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Snapshot authorized records or reports into a private downloadable export.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "subscribers",
+       "subscriber_history",
+       "deliveries",
+       "links",
+       "acquisition",
+       "cohort",
+       "suppressions",
+       "audit",
+       "migration_baseline"
+      ]
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "csv",
+       "jsonl"
+      ]
+     },
+     "subscriber_id": {
+      "$ref": "#/$defs/id"
+     },
+     "filter": {
+      "$ref": "#/$defs/filter"
+     },
+     "from": {
+      "$ref": "#/$defs/timestamp"
+     },
+     "to": {
+      "$ref": "#/$defs/timestamp"
+     }
+    },
+    "required": [
+     "key",
+     "kind",
+     "format"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "file_begin",
+   "view": "Transfers",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Start a bounded upload and bind object purpose and owner.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "kind": {
+      "$ref": "#/$defs/blob_kind"
+     },
+     "size": {
+      "$ref": "#/$defs/count"
+     },
+     "sha256": {
+      "$ref": "#/$defs/hash"
+     }
+    },
+    "required": [
+     "key",
+     "kind",
+     "size",
+     "sha256"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/file"
+   }
+  },
+  {
+   "name": "file_write",
+   "view": "Transfers",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Append a base64 chunk at its exact byte offset. Matching replays are safe.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "offset": {
+      "$ref": "#/$defs/count"
+     },
+     "base64": {
+      "$ref": "#/$defs/bytes"
+     },
+     "chunk_sha256": {
+      "$ref": "#/$defs/hash"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "offset",
+     "base64",
+     "chunk_sha256"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "next_offset": {
+      "$ref": "#/$defs/count"
+     }
+    },
+    "required": [
+     "id",
+     "next_offset"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "file_finish",
+   "view": "Transfers",
+   "surface": "operator",
+   "scope": "write",
+   "mode": "command",
+   "description": "Verify length, digest and content type before sealing an immutable object.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "key",
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/file"
+   }
+  },
+  {
+   "name": "file_read",
+   "view": "Transfers",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Read an authorized file as bounded base64 chunks. Sensitive import/export kinds also require admin.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "offset": {
+      "$ref": "#/$defs/count"
+     },
+     "length": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 49152
+     }
+    },
+    "required": [
+     "id",
+     "offset"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "offset": {
+      "$ref": "#/$defs/count"
+     },
+     "base64": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 65536
+     },
+     "size": {
+      "$ref": "#/$defs/count"
+     },
+     "sha256": {
+      "$ref": "#/$defs/hash"
+     },
+     "next_offset": {
+      "$ref": "#/$defs/count"
+     }
+    },
+    "required": [
+     "id",
+     "offset",
+     "base64",
+     "size",
+     "sha256"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "import_prepare",
+   "view": "Migration",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Validate staged files, mappings and provider evidence without adding sendable readers or mail jobs.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "files": {
+      "$ref": "#/$defs/ids"
+     },
+     "mapping_version": {
+      "$ref": "#/$defs/id"
+     },
+     "cutoff": {
+      "$ref": "#/$defs/timestamp"
+     }
+    },
+    "required": [
+     "key",
+     "files",
+     "mapping_version",
+     "cutoff"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/import_plan"
+   }
+  },
+  {
+   "name": "import_commit",
+   "view": "Migration",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Apply the reviewed checksums and suppression-first mapping with a durable receipt.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "plan_id": {
+      "$ref": "#/$defs/id"
+     },
+     "plan_digest": {
+      "$ref": "#/$defs/hash"
+     }
+    },
+    "required": [
+     "key",
+     "plan_id",
+     "plan_digest"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "migration_status",
+   "view": "Migration",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "query",
+   "description": "Read source and destination counts, cutoffs, eligible-set digest, delta freshness and discrepancies.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "counts": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/metric"
+      },
+      "maxItems": 100
+     },
+     "eligible_digest": {
+      "$ref": "#/$defs/hash"
+     },
+     "watermarks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/event"
+      },
+      "maxItems": 100
+     },
+     "checks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/check"
+      },
+      "maxItems": 100
+     }
+    },
+    "required": [
+     "counts",
+     "eligible_digest",
+     "watermarks",
+     "checks"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "migration_reconcile",
+   "view": "Migration",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Compare a staged delta and ledger against recorded baselines. Emit a private discrepancy file.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "files": {
+      "$ref": "#/$defs/ids"
+     },
+     "watermark": {
+      "$ref": "#/$defs/timestamp"
+     },
+     "baseline_id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "key",
+     "files",
+     "watermark",
+     "baseline_id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "jobs_list",
+   "view": "Jobs",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Page jobs visible to the caller, with their original scope checks.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "cursor": {
+      "$ref": "#/$defs/cursor"
+     },
+     "limit": {
+      "$ref": "#/$defs/limit"
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/job"
+      },
+      "maxItems": 100
+     },
+     "next_cursor": {
+      "$ref": "#/$defs/cursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "job_get",
+   "view": "Jobs",
+   "surface": "operator",
+   "scope": "read",
+   "mode": "query",
+   "description": "Read progress, diagnostics and any result asset for an authorized job.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "$ref": "#/$defs/id"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "job_retry",
+   "view": "Jobs",
+   "surface": "operator",
+   "scope": "admin",
+   "mode": "command",
+   "description": "Retry eligible transient failed work from its checkpoint; uncertain mail attempts stay held.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "$ref": "#/$defs/key"
+     },
+     "id": {
+      "$ref": "#/$defs/id"
+     },
+     "expected_version": {
+      "$ref": "#/$defs/version"
+     },
+     "reason": {
+      "$ref": "#/$defs/short"
+     }
+    },
+    "required": [
+     "key",
+     "id",
+     "expected_version",
+     "reason"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/job"
+   }
+  },
+  {
+   "name": "reader_info",
+   "view": "Subscribe",
+   "surface": "reader",
+   "scope": "reader",
+   "mode": "query",
+   "description": "Read public signup copy metadata and published host archive/feed destinations.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/reader_config"
+   }
+  },
+  {
+   "name": "reader_subscribe",
+   "view": "Subscribe",
+   "surface": "reader",
+   "scope": "reader",
+   "mode": "command",
+   "description": "Request double opt-in with the same generic acknowledgment and abuse controls as the form.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "email": {
+      "$ref": "#/$defs/email"
+     },
+     "campaign": {
+      "$ref": "#/$defs/utm"
+     }
+    },
+    "required": [
+     "email"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/reader_result"
+   }
+  },
+  {
+   "name": "reader_resend",
+   "view": "Subscribe",
+   "surface": "reader",
+   "scope": "reader",
+   "mode": "command",
+   "description": "Request another confirmation subject to cooldown and eligibility.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "email": {
+      "$ref": "#/$defs/email"
+     }
+    },
+    "required": [
+     "email"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/reader_result"
+   }
+  },
+  {
+   "name": "reader_confirm",
+   "view": "Confirm",
+   "surface": "reader",
+   "scope": "reader",
+   "mode": "command",
+   "description": "Exchange the confirmation token after a deliberate choice by its holder.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "token": {
+      "$ref": "#/$defs/proof"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/reader_result"
+   }
+  },
+  {
+   "name": "reader_unsubscribe",
+   "view": "Unsubscribe",
+   "surface": "reader",
+   "scope": "reader",
+   "mode": "command",
+   "description": "Opt out using the matching reader proof; supports idempotent repetition.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "token": {
+      "$ref": "#/$defs/proof"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "additionalProperties": false
+   },
+   "outputSchema": {
+    "$ref": "#/$defs/reader_result"
+   }
+  }
+ ]
+}

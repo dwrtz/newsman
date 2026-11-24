@@ -1,0 +1,43 @@
+[package]
+name = "newsman"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+description = "Self-hosted email publishing with a native HTTP MCP server on Cloudflare Workers and Amazon SES"
+repository = "https://github.com/dwrtz/newsman"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ammonia = "4.2"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+csv = "1"
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.4"
+hmac = "0.12"
+html2text = { version = "0.17", default-features = false }
+js-sys = "0.3"
+lol_html = "2"
+regex = "1"
+roxmltree = "0.21"
+futures-util = "0.3"
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = { version = "0.10", features = ["oid"] }
+subtle = "2.6"
+url = "2.5"
+uuid = { version = "1", features = ["v4", "js"] }
+wasm-bindgen = "0.2"
+worker = { version = "0.9", features = ["d1", "queue"] }
+x509-cert = { version = "0.2", features = ["pem"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = "debuginfo"

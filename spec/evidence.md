@@ -1,0 +1,7 @@
+# Product evidence and design decisions
+
+On 2026-11-24, Reverse Engineer Anything 6.10.1 statically inspected one published beehiiv form-loader script. Its report identified a form-selecting attribute, an iframe and campaign parameters. Inspection of those source locations showed how the loader selects a form and carries attribution to it. The SHA-256 of the inspected script was `30e9e5e230bc70bd202af25db3d3c12ca84ee4d6f65190a6138de7d096c366d5`. The local analysis produced evidence ID `ev_7db54375a4f3d371e3ec0c129142a5387ec9eec8f7e9a31e7c3a9a26bc8fe4d7`. This is evidence about that shipped browser artifact. [Published form loader](https://subscribe-forms.beehiiv.com/v3/loader.js) · [Reverse Engineer Anything](https://github.com/morluto/rea)
+
+The general product capability is an opt-in form that can preserve attribution. newsman offers hosted signup that also works with JavaScript disabled. Existing websites and applications may link to it or submit through an appropriate same-origin adapter. Registration and confirmation have separate states and effects.
+
+The Rust backend, self-hosted Cloudflare storage, SES delivery, allowlisted operators and full HTTP MCP surface are independent design choices. The application’s own acceptance checks establish their behavior. The screenshots in this release show the running reference implementation with example content. [Reference implementation](https://github.com/dwrtz/newsman)

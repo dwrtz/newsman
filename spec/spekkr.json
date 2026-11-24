@@ -1,0 +1,157 @@
+{
+  "spekkr": 1,
+  "id": "dwrtz/newsman",
+  "name": "newsman",
+  "version": "0.2.0",
+  "kind": "web app",
+  "author": {
+    "id": "dwrtz",
+    "name": "David Wurtz"
+  },
+  "summary": "Run opt-in email on your own Cloudflare account with Rust and Amazon SES. Every web action is also a tool on the HTTP MCP server.",
+  "keywords": [
+    "http mcp",
+    "streamable http",
+    "model context protocol",
+    "rust",
+    "cloudflare workers",
+    "amazon ses",
+    "email publishing",
+    "email campaigns",
+    "beehiiv alternative",
+    "self-hosted",
+    "double opt-in"
+  ],
+  "targets": {
+    "platforms": [
+      "web",
+      "backend"
+    ],
+    "stack": [
+      "Rust",
+      "WebAssembly",
+      "Cloudflare Workers",
+      "Cloudflare D1",
+      "Cloudflare R2",
+      "Cloudflare Queues",
+      "Cloudflare Access",
+      "Amazon SES v2",
+      "Amazon SNS",
+      "Model Context Protocol"
+    ]
+  },
+  "customize": {
+    "settings": [
+      {
+        "key": "publication_name",
+        "label": "Workspace display name",
+        "default": "newsman",
+        "help": "Display this name in the operator console and recipient-facing signup flow."
+      },
+      {
+        "key": "public_origin",
+        "label": "Public application origin",
+        "default": "https://mail.example",
+        "help": "Use the canonical HTTPS origin of your installation for signup, consent and remote client access."
+      },
+      {
+        "key": "time_zone",
+        "label": "Reporting time zone",
+        "default": "UTC",
+        "help": "Use an IANA time zone to present operator-selected send times and reporting windows."
+      },
+      {
+        "key": "archive_lag_days",
+        "label": "Optional archive handoff delay in days",
+        "default": "0",
+        "help": "Use a nonnegative whole number up to 365 when a message has a web release. Standalone email needs no archive or delay."
+      },
+      {
+        "key": "ses_region",
+        "label": "Amazon SES region",
+        "default": "us-east-1",
+        "help": "Select the AWS region of your verified sender, production sending account and feedback configuration."
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "spec.md",
+      "about": "Requirements for a self-hosted opt-in email application with complete HTTP MCP access."
+    },
+    {
+      "path": "operations.json",
+      "about": "Machine-readable registry and schemas for operator and recipient HTTP MCP tools and web actions."
+    },
+    {
+      "path": "parity.md",
+      "about": "Client connection, examples, permissions, file transfer and web/MCP parity checks."
+    },
+    {
+      "path": "access.md",
+      "about": "Rust identity and OAuth flow, the operator allowlist, delegated scopes and recipient proofs."
+    },
+    {
+      "path": "delivery.md",
+      "about": "Cloudflare deployment, SES feedback, recipient delivery boundaries, costs and recovery."
+    },
+    {
+      "path": "migration.md",
+      "about": "Optional suppression-first migration from beehiiv or another list manager, with a reconciliation exercise."
+    },
+    {
+      "path": "acceptance.md",
+      "about": "Checks for the Rust reference implementation, remote MCP operation and standalone sending."
+    },
+    {
+      "path": "evidence.md",
+      "about": "Public signup behavior, static REA evidence and independent implementation choices."
+    }
+  ],
+  "needs": {
+    "permissions": [
+      "shell",
+      "network"
+    ]
+  },
+  "safety": {
+    "commands": [
+      "cargo test --locked",
+      "npm ci",
+      "npm run build",
+      "npm test",
+      "npm run test:parity",
+      "npm run test:e2e",
+      "npm run dev",
+      "npm run demo",
+      "npm run screenshots",
+      "npm run check:deploy"
+    ],
+    "secrets": [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+      "READER_PROOF_SECRET",
+      "NEWSMAN_SECRET"
+    ]
+  },
+  "changelog": [
+    {
+      "version": "0.2.0",
+      "date": "2026-11-25",
+      "note": "General-purpose opt-in email publishing, independent send times, optional web handoff, MIT-licensed Rust reference implementation, full remote MCP access and screenshots of the running console."
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-11-24",
+      "note": "Initial specification for self-hosted email delivery with Cloudflare, Amazon SES and HTTP MCP."
+    }
+  ],
+  "demo": {
+    "screenshots": [
+      "shots/overview.png",
+      "shots/compose.png",
+      "shots/mcp.png"
+    ]
+  }
+}

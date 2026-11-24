@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>newsman · Operator console</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/fonts/dm-sans.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/instrument-serif.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to content</a>
+    <div class="shell">
+      <aside id="sidebar" class="sidebar" aria-label="Publishing workspace">
+        <div class="brand-row">
+          <a class="wordmark" href="#/overview" aria-label="newsman overview">
+            <span class="brand-icon" aria-hidden="true"
+              ><i></i><i></i><i></i><i></i
+            ></span>
+            <span>newsman<span class="brand-stop">.</span></span>
+          </a>
+          <button
+            type="button"
+            class="mobile-menu"
+            id="mobile-menu"
+            aria-expanded="false"
+            aria-controls="sidebar-content"
+          >
+            Menu
+          </button>
+        </div>
+        <div id="sidebar-content" class="sidebar-content">
+          <div id="publication-select" class="workspace-card" hidden></div>
+          <nav id="navigation" aria-label="Main navigation"></nav>
+          <div id="identity" class="identity"></div>
+        </div>
+      </aside>
+      <div class="main-column">
+        <header class="topbar">
+          <div class="crumb">
+            <span class="crumb-mark" aria-hidden="true">◩</span
+            ><span>Workspace</span><span class="slash">/</span
+            ><span id="current-page">Overview</span>
+          </div>
+          <div id="top-right" class="top-right"></div>
+        </header>
+        <main id="content" tabindex="-1" aria-busy="true">
+          <p class="initial-load" role="status">Opening your workspace…</p>
+        </main>
+      </div>
+    </div>
+    <dialog id="modal" aria-labelledby="dialog-title">
+      <div id="dialog-body"></div>
+    </dialog>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <noscript
+      ><p class="notice">
+        Enable JavaScript to use the operator console.
+      </p></noscript
+    >
+  </body>
+</html>
