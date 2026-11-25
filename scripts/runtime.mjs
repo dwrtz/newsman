@@ -14,7 +14,7 @@ async function availablePort() {
   return port;
 }
 
-export async function startRuntime({ port = 0, persist = false, bindings = {} } = {}) {
+export async function startRuntime({ port = 0, persist = false, bindings = {}, outboundService } = {}) {
   const localPort = port || await availablePort();
   const origin = 'http://127.0.0.1:' + localPort;
   const path = name => resolve(root, name);
@@ -23,6 +23,7 @@ export async function startRuntime({ port = 0, persist = false, bindings = {} } 
     host: '127.0.0.1', port: localPort, cf: false,
     compatibilityDate: '2026-11-23',
     modulesRoot: path('build'),
+    outboundService,
     modules: [
       {type:'ESModule', path:path('build/index.js')},
       {type:'CompiledWasm', path:path('build/index_bg.wasm')},

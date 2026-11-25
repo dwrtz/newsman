@@ -503,11 +503,11 @@ pub async fn feedback(mut req: Request, env: &Env) -> Res<Response> {
             403,
         ));
     }
-    let mut tx = Tx::begin(env, Actor::system()).await?;
-    if tx.get("provider_receipt", &envelope.id).await?.is_some() {
-        return Ok(Response::ok("OK")?);
-    }
     if envelope.kind == EnvelopeKind::Confirm {
+        let tx = Tx::begin(env, Actor::system()).await?;
+        if tx.get("provider_receipt", &envelope.id).await?.is_some() {
+            return Ok(Response::ok("OK")?);
+        }
         let body = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("Action", "ConfirmSubscription")
             .append_pair("Version", "2010-03-31")
@@ -530,49 +530,45 @@ pub async fn feedback(mut req: Request, env: &Env) -> Res<Response> {
                 503,
             ));
         }
-    } else if envelope.kind == EnvelopeKind::Notification {
-        if let Some(record) =
-            parse_feedback(&envelope.message, &required(env, "SES_CONFIGURATION_SET")?)
-        {
-            crate::delivery::record_feedback(&mut tx, &record).await?;
+    }
+    let feedback = if envelope.kind == EnvelopeKind::Notification {
+        parse_feedback(&envelope.message, &required(env, "SES_CONFIGURATION_SET")?)
+    } else {
+        None
+    };
+    for _ in 0..4 {
+        let mut tx = Tx::begin(env, Actor::system()).await?;
+        if tx.get("provider_receipt", &envelope.id).await?.is_some() {
+            return Ok(Response::ok("OK")?);
+        }
+        if let Some(record) = &feedback {
+            crate::delivery::record_feedback(&mut tx, record).await?;
+        }
+        let at = now();
+        tx.put(
+            "provider_receipt",
+            &envelope.id,
+            json!({"id":envelope.id,"at":at}),
+        )?;
+        tx.put("provider_state", "feedback", json!({"id":"feedback","last_at":at,"subscribed":envelope.kind!=EnvelopeKind::Unsubscribe}))?;
+        match tx.commit().await {
+            Ok(()) => return Ok(Response::ok("OK")?),
+            Err(e) if e.code == "concurrent_update" => continue,
+            Err(e) => return Err(e),
         }
     }
-    tx.put(
-        "provider_receipt",
-        &envelope.id,
-        json!({"id":envelope.id,"at":now()}),
-    )?;
-    tx.put("provider_state","feedback",json!({"id":"feedback","last_at":now(),"subscribed":envelope.kind!=EnvelopeKind::Unsubscribe}))?;
-    tx.commit().await?;
-    Ok(Response::ok("OK")?)
+    // SNS only retries HTTP 429 and 5xx. A lost write race must remain eligible for redelivery.
+    Err(AppError::new(
+        "feedback_busy",
+        "Retry this notification.",
+        503,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    const CERT: &str = r#"-----BEGIN CERTIFICATE-----
-MIIDOzCCAiOgAwIBAgIUF336EBxe9KQRV5Vk1XIs9UNwYqMwDQYJKoZIhvcNAQEL
-BQAwLTErMCkGA1UEAwwibmV3c21hbi1nZW5lcmF0ZWQtdGVzdC1jZXJ0aWZpY2F0
-ZTAeFw0yNjExMjQyMjA3NTFaFw0yNjEyMjQyMjA3NTFaMC0xKzApBgNVBAMMIm5l
-d3NtYW4tZ2VuZXJhdGVkLXRlc3QtY2VydGlmaWNhdGUwggEiMA0GCSqGSIb3DQEB
-AQUAA4IBDwAwggEKAoIBAQDZ0PTRvJtHABoDyCOLO+EUKxMXpBapa4RzR5Zl1++A
-Q9bVh17ub+IVaI7vra7DeZhTeK66C+7UMAYX1I9rkyTxJ9hpSm+xsm+nRTQ17Ahg
-6XswBUQpra2op1TmIYJDl7Tplz/+DQR37IFQxEL2yA3f9Nt5DzELLBJ8fMBT4Obl
-tZB1zmeCKFWj2kPnyljeh9Yru5NGELxPLz2kwZbdIBoIjkmy7SxhKNo1U7d/L55u
-guEMs/xzsIYEUYNMduWZadbDPXry/juXpkQePJxBF8Uo7stDbs5yK3pclEi5mWFQ
-eFu/qc3kA75UKI377voTHXAhdZGQ+Q+itYWgX2mQtRa9AgMBAAGjUzBRMB0GA1Ud
-DgQWBBRBsHR5NdL04Akp3lfUn4vs6u3w9TAfBgNVHSMEGDAWgBRBsHR5NdL04Akp
-3lfUn4vs6u3w9TAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBG
-QGDh3nrHEn2agLrO5/SnuRO937mjFACL257s3R1n9po+k81auMZEYXqthqHaMZm3
-e0wRiHG3+6eUvzTtY0m9Ae9H97N5oAApdMW4Cg4CcGNKaJAWvB8MQfRtyNEeNjD6
-NsSoUmpaQzr6miAXzFlmoIbesSkwFzNKVRiv0QYFJ3mY9Js+GSSJo05cgkr888Yc
-oD8fYPk0vOehQ3r5zmSzp8Skj0twwlAvchRSI/Hb/oP532Mpx02xNYrrcGKu3xrm
-msuUMcFG2bFk9jezApgp3v356VgAoyylYzdZo4lvkzUvcennPm6EGQlk3KR2YW/w
-pLCEGAXn8RDoZMeraokk
------END CERTIFICATE-----
-"#;
-    const SIGNATURE: &str = "0hktBI5uDunwTIqzVts9u8Pq0G/EMYUf8gPJVUBcg4x95yOJm0PJm3Xv2vrJgx+cMvdnnQbYMjZwHvNaQ2d3Oyagda2WPSR5XA7WupWjBUWs5KUQpKZh2jAVM75gBUG3bXi5VhiZlB1TmIrr8o6bn2k+JS+ebMzB0Rtx0i0YNLuIVlhdkokn/FtsNS2QZqWWbn9ZuGUTC2fumflaDrExOeIcbooKSE1TeWyhyjmCKOougTQ2OWnTCmXMaZ7flGzjI1nfH6czoh2OW8qUa6YG/EzZ0KXlKKhuYiRIcGk+KT2y3/8NUzxByKlZ1O53wHGeTu2k89bweB6KgZL/6YRNIQ==";
-    const SIGNED_AT: &str = "2026-11-24T22:07:52Z";
+    const CERT: &str = include_str!("../test/fixtures/sns-certificate.pem");
     #[test]
     fn timeout_server_error_and_missing_message_id_stay_unknown() {
         for code in [301, 408, 500, 502, 504] {
@@ -616,8 +612,8 @@ pLCEGAXn8RDoZMeraokk
     #[test]
     fn authenticates_sns_fields_and_pins_exact_certificate_origin() {
         let topic = "arn:aws:sns:us-west-2:000000000000:newsman";
-        let mut v = json!({"Message":"{}","MessageId":"synthetic-notification","TopicArn":topic,"Type":"Notification","SignatureVersion":"2","Timestamp":SIGNED_AT,
-            "Signature":SIGNATURE,"SigningCertURL":"https://sns.us-west-2.amazonaws.com/SimpleNotificationService-00000000000000000000.pem"});
+        let mut v: Value =
+            serde_json::from_str(include_str!("../test/fixtures/sns-notification.json")).unwrap();
         let e = sns_envelope(&v, topic, "us-west-2").unwrap();
         assert!(verify_certificate(&e, CERT));
         v["Message"] = json!("different");
@@ -639,8 +635,9 @@ pLCEGAXn8RDoZMeraokk
 
     #[test]
     fn feedback_requires_our_configuration_set_and_parses_permanent_bounces() {
-        let event = json!({"eventType":"Bounce","mail":{"timestamp":SIGNED_AT,"messageId":"ses-receipt","tags":{"ses:configuration-set":["newsman"],"newsman_attempt":["ses_1"]}},
-            "bounce":{"timestamp":SIGNED_AT,"bounceType":"Permanent","bouncedRecipients":[{"emailAddress":"reader@example.org"}]}});
+        let at = "2026-11-25T00:00:00Z";
+        let event = json!({"eventType":"Bounce","mail":{"timestamp":at,"messageId":"ses-receipt","tags":{"ses:configuration-set":["newsman"],"newsman_attempt":["ses_1"]}},
+            "bounce":{"timestamp":at,"bounceType":"Permanent","bouncedRecipients":[{"emailAddress":"reader@example.org"}]}});
         assert!(parse_feedback(&event.to_string(), "other").is_none());
         let parsed = parse_feedback(&event.to_string(), "newsman").unwrap();
         assert_eq!(parsed.kind, "hard_bounce");
