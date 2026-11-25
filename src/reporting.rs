@@ -53,8 +53,12 @@ fn rate(label: &str, n: usize, base: usize, source: &str) -> Value {
 }
 
 fn attempt_key(a: &Value, campaign_map: &BTreeMap<String, String>) -> Option<(String, String)> {
-    let issue = campaign_map.get(a["campaign_id"].as_str()?)?;
-    Some((issue.clone(), a["subscriber_id"].as_str()?.to_owned()))
+    let issue = if a["kind"] == "welcome_issue" {
+        a["issue_id"].as_str()?
+    } else {
+        campaign_map.get(a["campaign_id"].as_str()?)?.as_str()
+    };
+    Some((issue.to_owned(), a["subscriber_id"].as_str()?.to_owned()))
 }
 
 async fn delivery_report(
@@ -73,7 +77,6 @@ async fn delivery_report(
                 c["issue_id"].as_str()?.to_owned(),
             ))
         })
-        .filter(|(_, value)| issue.is_none_or(|s| value == s))
         .collect::<BTreeMap<_, _>>();
     let attempts = tx.list("attempt").await?;
     let mut delivered = BTreeSet::new();
@@ -83,6 +86,9 @@ async fn delivery_report(
         let Some(key) = attempt_key(a, &campaigns) else {
             continue;
         };
+        if issue.is_some_and(|wanted| wanted != key.0) {
+            continue;
+        }
         if w.contains(&a["accepted_at"]) {
             accepted.insert(key.clone());
         }

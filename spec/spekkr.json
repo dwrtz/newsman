@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -138,6 +138,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.6.0",
+      "date": "2026-11-25",
+      "note": "Publications can brand reader confirmation pages and send the current private edition once after first confirmation. Dated full-audience campaigns supply the edition for the week. A publisher can pin an edition delivered by a previous provider during migration."
+    },
     {
       "version": "0.5.1",
       "date": "2026-11-25",

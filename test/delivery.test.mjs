@@ -157,3 +157,111 @@ test('a proof for a confirmed seed includes a working one-click unsubscribe whil
   assert.equal(status,'unsubscribed');
   assert.equal((await call('health_get')).paused,true);
 });
+
+test('first opt-in queues the released weekly edition once and honors opt-out and pause', async t => {
+  const runtime = await startRuntime({bindings:{WELCOME_CURRENT_ISSUE:'true'}});
+  t.after(() => runtime.close());
+  const {origin, mf} = runtime;
+  const call = await webClient(origin);
+  const db = await mf.getD1Database('DB');
+  const settings = await call('settings_get');
+  await command(call,'settings_update',{expected_version:settings.version,settings:{
+    ...settings.settings,postal_footer:'Test publication address',click_tracking:true,
+  }});
+  const pause = async paused => command(call,'dispatch_set',{
+    expected_version:(await call('health_get')).version, paused, reason:'Local opt-in exercise',
+  });
+  await pause(false);
+  const at = days => new Date(Date.now()+days*86_400_000).toISOString();
+  async function publish(title, edition, archive, audience) {
+    const html = '<p>Full story with a <a href="https://example.org/source">primary source</a>.</p>';
+    const issue = await command(call,'issue_create',{draft:{title,subject:title,preheader:'',html,
+      plain_text:'Full story with a primary source: https://example.org/source',
+      source:{title,summary:'',html,external_key:title,edition_at:at(edition),archive_at:at(archive)}}});
+    const plan = await command(call,'send_prepare',{issue_id:issue.id,issue_version:issue.version,audience});
+    await command(call,'send_commit',{plan_id:plan.id,plan_digest:plan.digest});
+    return issue;
+  }
+  const weekly = await publish('Current edition',-2,5,{statuses:['active']});
+  await publish('Future edition',1,7,{});
+  await publish('Archived edition',-7,-1,{});
+  await publish('Segment only',-1,3,{tags_all:['insiders']});
+  await pause(true);
+  async function start(email) {
+    const signup = await fetch(origin+'/api/newsletter/subscribe',{
+      method:'POST',body:new URLSearchParams({email}),redirect:'manual',
+    });
+    assert.equal(signup.status,303);
+    const sub = (await call('subscribers_list',{search:email})).items[0];
+    const mail = await db.prepare("SELECT json_extract(body,'$.text') AS mail FROM newsman_records WHERE kind='mail_queue' AND json_extract(body,'$.subscriber_id')=?").bind(sub.id).first('mail');
+    const url = mail.match(/https?:\/\/[^\s]+\/confirm\/[^\s]+/)[0];
+    assert.equal((await fetch(url)).status,200);
+    return {url,id:sub.id};
+  }
+  const welcome = async () => (await db.prepare("SELECT body FROM newsman_records WHERE kind='attempt' AND json_extract(body,'$.kind')='welcome_issue'").all()).results.map(row=>JSON.parse(row.body));
+  const yes = await start('new@example.test');
+  const no = await start('unsub@example.test');
+  assert.equal((await welcome()).length,0);
+  const confirm = url => fetch(url,{method:'POST',redirect:'manual'});
+  assert.equal((await confirm(yes.url)).headers.get('location'),'/confirmed/?issue=queued');
+  assert.equal((await confirm(yes.url)).headers.get('location'),'/confirmed/');
+  await confirm(no.url);
+  const attempts = await welcome();
+  assert.equal(attempts.length,2);
+  assert.ok(attempts.every(a=>a.issue_id === weekly.id));
+  const sub = await call('subscriber_get',{id:no.id});
+  await command(call,'subscriber_suppress',{id:no.id,expected_version:sub.version,reason:'Reader requested opt-out'});
+  await wake(mf);
+  assert.ok((await welcome()).every(a=>a.state==='queued'));
+  await pause(false);
+  await wake(mf);
+  await wake(mf);
+  const weeklyMails = async () => (await captures(db)).filter(m=>m.subject==='Current edition');
+  const mails = await weeklyMails();
+  assert.equal(mails.length,1);
+  assert.equal(mails[0].to,'new@example.test');
+  assert.match(mails[0].html,/Full story/);
+  assert.match(mails[0].text,/unsubscribe/i);
+  assert.match(mails[0].html,/Test publication address/);
+  const plan = await command(call,'send_prepare',{issue_id:weekly.id,issue_version:weekly.version,audience:{}});
+  await command(call,'send_commit',{plan_id:plan.id,plan_digest:plan.digest});
+  await wake(mf);
+  assert.equal((await weeklyMails()).length,1);
+  const counts = await call('report_get',{kind:'edition',issue_id:weekly.id,from:at(-1),to:at(1)});
+  assert.equal(counts.items.find(m=>m.label==='accepted').value,1);
+});
+
+test('migration pin requires prior delivery evidence and uses the specified private revision', async t => {
+  const id = 'issue_previous';
+  const {mf,origin,close} = await startRuntime({bindings:{WELCOME_CURRENT_ISSUE:'true',WELCOME_SEED_ISSUE:id+'@1'}});
+  t.after(close);
+  const db = await mf.getD1Database('DB');
+  const call = await webClient(origin);
+  const settings = await call('settings_get');
+  await command(call,'settings_update',{expected_version:settings.version,settings:{
+    ...settings.settings,postal_footer:'Fixture publication address',
+  }});
+  const at = d => new Date(Date.now()+d*86_400_000).toISOString();
+  const source = {external_key:'edition-05',title:'Original edition',summary:'',html:'<p>The original private article.</p>',edition_at:at(-2),archive_at:at(5)};
+  const draft = {title:source.title,subject:source.title,preheader:'',html:source.html,plain_text:'The original private article.',source};
+  await insert(db,'issue',{id,version:2,state:'draft',draft:{...draft,subject:'Later edit'}});
+  await db.prepare("INSERT INTO newsman_records(kind,id,body) VALUES ('issue_revision',?,?)")
+    .bind(id+':0000000000000001',JSON.stringify({id,version:1,state:'draft',draft})).run();
+  async function join(email) {
+    await fetch(origin+'/api/newsletter/subscribe',{method:'POST',body:new URLSearchParams({email})});
+    const row = await db.prepare("SELECT json_extract(m.body,'$.text') message FROM newsman_records m JOIN newsman_records s ON s.kind='subscriber' AND s.id=json_extract(m.body,'$.subscriber_id') WHERE m.kind='mail_queue' AND json_extract(s.body,'$.email')=?").bind(email).first();
+    const proof = row.message.match(/https?:\/\/[^\s]+\/confirm\/[^\s]+/)[0];
+    return (await fetch(proof,{method:'POST',redirect:'manual'})).headers.get('location');
+  }
+  assert.equal(await join('before@example.test'),'/confirmed/');
+  await insert(db,'historical_send',{id:'old-provider',external_key:'edition-05',status:'sent'});
+  assert.equal(await join('after@example.test'),'/confirmed/?issue=queued');
+  const health = await call('health_get');
+  await command(call,'dispatch_set',{expected_version:health.version,paused:false,reason:'Check private migration snapshot'});
+  await wake(mf);
+  const delivered = (await captures(db)).filter(m=>m.subject==='Original edition');
+  assert.equal(delivered.length,1);
+  assert.equal(delivered[0].to,'after@example.test');
+  assert.match(delivered[0].html,/The original private article/);
+  await assert.rejects(command(call,'send_prepare',{issue_id:id,issue_version:2,audience:{}}),/already sent by the previous publisher/);
+});

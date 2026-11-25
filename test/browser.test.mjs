@@ -399,3 +399,35 @@ test(
     assert.deepEqual(issues, []);
   },
 );
+
+test("reader confirmation uses same-origin artwork, a deliberate button and a mobile layout", async t => {
+  const id = "file_brand";
+  const {mf, origin, close} = await startRuntime({bindings:{
+    READER_WORDMARK:"weekly.example", READER_SITE_URL:"https://weekly.example",
+    READER_ART_ASSET:id, READER_ART_ALT:"A listening horn and a printing press",
+  }});
+  t.after(close);
+  const db = await mf.getD1Database("DB");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHW4AAAAASUVORK5CYII=", "base64");
+  const bucket = await mf.getR2Bucket("FILES");
+  await bucket.put("art/selected", png);
+  await db.prepare("INSERT INTO newsman_records(kind,id,body) VALUES ('file',?,?)")
+    .bind(id, JSON.stringify({id,kind:"hero",state:"complete",mime:"image/png",object_key:"art/selected"})).run();
+  assert.equal((await fetch(origin+"/reader-art/file_other")).status,404);
+  const browser = await chromium.launch({executablePath:chromiumPath,headless:true,args:["--no-sandbox"]});
+  t.after(()=>browser.close());
+  const page = await browser.newPage();
+  for (const width of [1280,390]) {
+    await page.setViewportSize({width,height:840});
+    const response = await page.goto(origin+"/confirm/browser-fixture");
+    assert.equal(response.headers()["referrer-policy"],"no-referrer");
+    await page.getByRole("button",{name:"Confirm my email"}).waitFor();
+    assert.equal(await page.getByRole("link",{name:"weekly.example"}).getAttribute("href"),"https://weekly.example/");
+    assert.ok(await page.getByRole("img",{name:"A listening horn and a printing press"}).evaluate(img=>img.complete && img.naturalWidth===1));
+    assert.ok(await page.evaluate(async()=>{ await document.fonts.ready; return document.documentElement.scrollWidth <= innerWidth && document.fonts.check('20px "Instrument Serif"'); }));
+  }
+  const submit = page.waitForResponse(r=>r.request().method()==="POST");
+  await page.getByRole("button",{name:"Confirm my email"}).click();
+  assert.equal((await submit).status(),410);
+  await page.getByRole("link",{name:"Request a new link"}).waitFor();
+});
