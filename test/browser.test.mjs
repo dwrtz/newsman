@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { chromium } from "playwright-core";
@@ -58,7 +59,7 @@ test("a browser can sign in, grant or deny a connector, and sign out", async (t)
     assert.equal(response.status(), status, path + " returned the wrong status");
   }
   async function decide(button) {
-    await submit(button, "/oauth/authorize", 303);
+    await submit(button, "/oauth/authorize", 200);
     await page.getByText("Connector received the authorization response.").waitFor();
     const returned = new URL(page.url());
     assert.equal(returned.origin + returned.pathname, callback);
@@ -105,6 +106,76 @@ test("a browser can sign in, grant or deny a connector, and sign out", async (t)
   await submit("Sign out", "/login/logout", 303);
   await page.getByRole("button", { name: "Email me a code" }).waitFor();
   assert.equal((await page.request.get(origin + "/api/session")).status(), 401);
+});
+
+test("a connector can redirect to its canonical host after browser consent", async (t) => {
+  const received = [];
+  // Mirror Grok's published www callback and its 308 to a different origin entirely on loopback.
+  const connector = createServer((req, res) => {
+    const url = new URL(req.url, "http://" + req.headers.host);
+    if (url.pathname !== "/oauth/callback") {
+      res.writeHead(404).end();
+      return;
+    }
+    received.push({ host: url.hostname, method: req.method, referer: req.headers.referer });
+    if (url.hostname === "localhost") {
+      url.hostname = "127.0.0.1";
+      res.writeHead(308, { Location: url.href }).end();
+    } else {
+      res.writeHead(200, { "Content-Type": "text/plain" }).end("Connector callback complete");
+    }
+  });
+  await new Promise(resolve => connector.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => connector.close(resolve)));
+  const callback = "http://localhost:" + connector.address().port + "/oauth/callback";
+  const clientId = "redirecting-connector";
+  const runtime = await startRuntime({ bindings: {
+    OAUTH_CLIENTS: JSON.stringify({ [clientId]: [callback] }),
+  } });
+  t.after(() => runtime.close());
+  const browser = await chromium.launch({ executablePath: chromiumPath, args: ["--no-sandbox"] });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  page.setDefaultTimeout(7000);
+  const { origin } = runtime;
+  const resource = origin + "/mcp";
+  const verifier = randomBytes(48).toString("base64url");
+
+  for (const choice of ["Allow", "Deny"]) {
+    const state = randomBytes(16).toString("hex");
+    const params = new URLSearchParams({
+      response_type: "code", client_id: clientId, redirect_uri: callback, state, scope: "read", resource,
+      code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    });
+    const consentPage = await page.goto(origin + "/oauth/authorize?" + params);
+    assert.match(await consentPage.headerValue("content-security-policy"), /form-action 'self';/);
+    const submitted = page.waitForRequest(r => r.url() === origin + "/oauth/authorize" && r.method() === "POST");
+    await page.getByRole("button", { name: choice, exact: true }).click();
+    await page.getByText("Connector callback complete").waitFor();
+    const returned = new URL(page.url()).searchParams;
+    assert.equal(returned.get("iss"), origin);
+    assert.equal(returned.get("state"), state);
+    if (choice === "Allow") {
+      assert.ok(returned.get("code"));
+      const exchange = () => fetch(origin + "/oauth/token", { method: "POST", body: new URLSearchParams({
+        grant_type: "authorization_code", client_id: clientId, redirect_uri: callback,
+        code: returned.get("code"), code_verifier: verifier, resource,
+      }) });
+      assert.ok((await (await exchange()).json()).access_token);
+      assert.equal((await (await exchange()).json()).error, "invalid_grant");
+      const replay = await page.request.post(origin + "/oauth/authorize", {
+        headers: { Accept: "text/html", Origin: origin, "Content-Type": "application/x-www-form-urlencoded" },
+        data: (await submitted).postData(),
+      });
+      assert.equal(replay.status(), 400);
+      assert.match(await replay.text(), /Return to your connector and start a new connection/);
+    } else {
+      assert.equal(returned.get("error"), "access_denied");
+      assert.equal(returned.has("code"), false);
+    }
+  }
+  assert.deepEqual(received.map(r => r.host), ["localhost", "127.0.0.1", "localhost", "127.0.0.1"]);
+  assert.ok(received.every(r => r.method === "GET" && r.referer === undefined));
 });
 
 test(

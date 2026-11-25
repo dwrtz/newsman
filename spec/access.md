@@ -36,7 +36,7 @@ A publisher can pre-register a public client or trust its HTTPS Client ID Metada
 
 The four application scopes are `read`, `write`, `send` and `admin`. Together they permit the full web workflow. A grant for reporting needs only its required scopes. A title, cursor, file handle or job ID cannot enlarge the grant’s authority. Check the underlying object’s required access on every transfer step. A valid token with insufficient scope gets HTTP 403. An expired, invalid or wrong-resource token gets 401. Use `grants_list` and `grants_revoke` for inspection and removal through the web console or MCP.
 
-Post the consent decision to the issuer with the session's CSRF token. The consent page's form policy must allow the browser to follow the response to the registered callback origin for that request. Revalidate the exact callback before redirecting and suppress the referrer on the redirect.
+Post the consent decision only to the issuer with the session's CSRF token. Revalidate the exact registered callback before returning the decision. Complete the browser POST at the issuer and open that callback with a separate GET so the connector can follow its own redirects. Include a continue link if automatic navigation is unavailable. Suppress the referrer and caching on the return page. Direct HTTP clients receive the callback in a 303 response. If a consent form was used or expired, explain how to restart the connection and issue no additional code.
 
 ## Transport and consent checks
 
