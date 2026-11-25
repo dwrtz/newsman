@@ -1,4 +1,4 @@
-//! A single-resource OAuth 2.1 authorization-code issuer for pre-registered public clients.
+//! OAuth authorization code and PKCE for the installation’s registered public clients.
 //! Only a hash of a one-time code, access token, refresh token, or consent handle is persisted.
 use super::*;
 use crate::{bounded_body, core::uid};
@@ -8,8 +8,9 @@ use subtle::ConstantTimeEq;
 
 const ACCESS_TTL: i64 = 900;
 const GRANT_TTL: i64 = 30 * 24 * 3600;
-const DEFAULT_LOCAL_CLIENT: &str = "newsman-local";
-const DEFAULT_LOCAL_CALLBACK: &str = "http://127.0.0.1:9876/callback";
+#[path = "oauth_clients.rs"]
+mod clients;
+use clients::registered;
 
 fn random() -> Res<String> {
     let mut bytes = [0u8; 32];
@@ -43,35 +44,25 @@ fn redirect(url: &Url) -> Res<Response> {
     r.headers_mut().set("Referrer-Policy", "no-referrer")?;
     Ok(r)
 }
-fn registered(env: &Env, req: &Request, client: &str, callback: &str) -> Res<bool> {
-    if client.is_empty()
-        || client.chars().count() > 160
-        || client.bytes().any(|b| b.is_ascii_control())
+fn authorization_error(
+    callback: &str,
+    issuer: &str,
+    state: &str,
+    code: &str,
+    detail: &str,
+) -> Res<Response> {
+    let mut url = Url::parse(callback).map_err(|_| config_error())?;
     {
-        return Ok(false);
+        let mut query = url.query_pairs_mut();
+        query
+            .append_pair("iss", issuer)
+            .append_pair("error", code)
+            .append_pair("error_description", detail);
+        if !state.is_empty() {
+            query.append_pair("state", state);
+        }
     }
-    let u = match Url::parse(callback) {
-        Ok(u) => u,
-        Err(_) => return Ok(false),
-    };
-    if !u.username().is_empty()
-        || u.password().is_some()
-        || u.fragment().is_some()
-        || !(u.scheme() == "https" || (u.scheme() == "http" && loopback(&u)))
-    {
-        return Ok(false);
-    }
-    if let Some(raw) = conf(env, "OAUTH_CLIENTS") {
-        let clients: BTreeMap<String, Vec<String>> =
-            serde_json::from_str(&raw).map_err(|_| config_error())?;
-        Ok(clients
-            .get(client)
-            .is_some_and(|uris| uris.iter().any(|s| s == callback)))
-    } else {
-        Ok(local_request(env, &req.url()?)
-            && client == DEFAULT_LOCAL_CLIENT
-            && callback == DEFAULT_LOCAL_CALLBACK)
-    }
+    redirect(&url)
 }
 fn pkce_verifier(v: &str) -> bool {
     (43..=128).contains(&v.len())
@@ -114,6 +105,38 @@ fn allowed_resource(env: &Env, canonical: &str, requested: &str) -> bool {
 }
 async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Response> {
     let u = req.url()?;
+    let Ok(f) = form_fields(u.query().unwrap_or_default().as_bytes()) else {
+        return oauth_error("invalid_request", "Duplicate parameter");
+    };
+    let client = text(&f, "client_id");
+    let callback = text(&f, "redirect_uri");
+    let state = text(&f, "state");
+    if !registered(env, req, client, callback).await? {
+        return oauth_error("invalid_client", "Unknown client or callback");
+    }
+    if state.len() > 1024 {
+        return oauth_error("invalid_request", "State exceeds the size limit");
+    }
+    let reject = |code, detail| authorization_error(callback, canonical, state, code, detail);
+    let resource = text(&f, "resource");
+    if text(&f, "response_type") != "code" {
+        return reject("unsupported_response_type", "Request an authorization code");
+    }
+    if !allowed_resource(env, canonical, resource) {
+        return reject("invalid_target", "Supply the canonical MCP resource");
+    }
+    if text(&f, "code_challenge_method") != "S256" || !valid_challenge(text(&f, "code_challenge")) {
+        return reject("invalid_request", "Supply a valid S256 challenge");
+    }
+    let Some(scopes) = parse_scopes(f.get("scope").map(String::as_str).unwrap_or("read")) else {
+        return reject("invalid_scope", "Unknown or empty scope");
+    };
+    if resource.ends_with("/reader/mcp")
+        && (!scopes.iter().any(|s| s == "read")
+            || scopes.iter().any(|s| s != "read" && s != "offline_access"))
+    {
+        return reject("invalid_scope", "Reader MCP requires read access");
+    }
     let actor = match super::web_actor(req, env).await {
         Err(e) if e.status == 401 && crate::email_login::enabled(env) => {
             return crate::email_login::signin_redirect(&format!(
@@ -124,36 +147,6 @@ async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Respon
         }
         result => result?,
     };
-    let Ok(f) = form_fields(u.query().unwrap_or_default().as_bytes()) else {
-        return oauth_error("invalid_request", "Duplicate parameter");
-    };
-    let client = text(&f, "client_id");
-    let callback = text(&f, "redirect_uri");
-    let state = text(&f, "state");
-    if !registered(env, req, client, callback)? {
-        return oauth_error("invalid_client", "Unknown client or callback");
-    }
-    let resource = text(&f, "resource");
-    if text(&f, "response_type") != "code"
-        || !allowed_resource(env, canonical, resource)
-        || text(&f, "code_challenge_method") != "S256"
-        || !valid_challenge(text(&f, "code_challenge"))
-        || state.len() > 1024
-    {
-        return oauth_error(
-            "invalid_request",
-            "Request code, the canonical MCP resource and a valid S256 challenge",
-        );
-    }
-    let Some(scopes) = parse_scopes(f.get("scope").map(String::as_str).unwrap_or("read")) else {
-        return oauth_error("invalid_scope", "Unknown or empty scope");
-    };
-    if resource.ends_with("/reader/mcp")
-        && (!scopes.iter().any(|s| s == "read")
-            || scopes.iter().any(|s| s != "read" && s != "offline_access"))
-    {
-        return oauth_error("invalid_scope", "Reader MCP requires read access");
-    }
     let handle = random()?;
     let id = sha256(handle.as_bytes());
     let mut tx = Tx::begin(env, actor.clone()).await?;
@@ -213,7 +206,9 @@ async fn decision(
         req,
         req_str(&p, "client")?,
         req_str(&p, "redirect_uri")?,
-    )? {
+    )
+    .await?
+    {
         return oauth_error("invalid_client", "Client registration changed");
     }
     let mut callback = Url::parse(req_str(&p, "redirect_uri")?).map_err(|_| config_error())?;
@@ -259,6 +254,16 @@ async fn token(
     let mode = text(f, "grant_type");
     let client = text(f, "client_id");
     let resource = text(f, "resource");
+    if req.headers().get("Authorization")?.is_some()
+        || !text(f, "client_secret").is_empty()
+        || f.contains_key("client_assertion")
+        || f.contains_key("client_assertion_type")
+    {
+        return oauth_error(
+            "invalid_client",
+            "Use the registered public client with PKCE",
+        );
+    }
     if client.is_empty() {
         return oauth_error("invalid_client", "Missing registered client identifier");
     }
@@ -297,7 +302,7 @@ async fn token(
         return oauth_error("invalid_grant", "Invalid or expired grant");
     };
     let gid = req_str(&grant, "id")?.to_owned();
-    if !registered(env, req, client, req_str(&grant, "redirect_uri")?)? {
+    if !registered(env, req, client, req_str(&grant, "redirect_uri")?).await? {
         return oauth_error("invalid_client", "The client registration has changed");
     }
     if credential["expires_s"]
@@ -408,7 +413,7 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
             | "/.well-known/oauth-protected-resource/mcp" => {
                 return as_json(
                     200,
-                    &json!({"resource":resource,"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":SCOPES}),
+                    &json!({"resource":resource,"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":["read","write","send","admin","offline_access"]}),
                 );
             }
             "/.well-known/oauth-protected-resource/reader/mcp"
@@ -416,7 +421,7 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
             {
                 return as_json(
                     200,
-                    &json!({"resource":format!("{canonical}/reader/mcp"),"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":["read"]}),
+                    &json!({"resource":format!("{canonical}/reader/mcp"),"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":["read","offline_access"]}),
                 );
             }
             "/.well-known/oauth-authorization-server" => {
@@ -425,7 +430,7 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
                     &json!({"issuer":canonical,"authorization_endpoint":format!("{canonical}/oauth/authorize"),"token_endpoint":format!("{canonical}/oauth/token"),
                     "revocation_endpoint":format!("{canonical}/oauth/revoke"),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],
                     "token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":["read","write","send","admin","offline_access"],
-                    "authorization_response_iss_parameter_supported":true}),
+                    "client_id_metadata_document_supported":clients::cimd_enabled(env)?,"authorization_response_iss_parameter_supported":true}),
                 );
             }
             "/oauth/authorize" => return authorize_page(&req, env, &canonical).await,

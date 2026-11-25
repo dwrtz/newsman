@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -137,6 +137,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.4.0",
+      "date": "2026-11-25",
+      "note": "Hosted MCP clients can connect using trusted OAuth client metadata, exact callbacks and PKCE. Streamable HTTP negotiates three protocol revisions and describes the scopes required by each tool."
+    },
     {
       "version": "0.3.1",
       "date": "2026-11-25",

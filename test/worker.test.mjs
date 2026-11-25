@@ -42,13 +42,13 @@ async function webSession(origin) {
   });
 }
 
-async function authorizationCode(origin, scope, cookie = "", path = "/mcp") {
+async function authorizationCode(origin, scope, cookie = "", path = "/mcp", registration = {clientId, callback}, decision = 'approve') {
   const verifier = randomBytes(48).toString('base64url');
   const state = randomBytes(16).toString('hex');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const resource = origin + path;
   const params = {
-    client_id: clientId, redirect_uri: callback, response_type: 'code', state,
+    client_id: registration.clientId, redirect_uri: registration.callback, response_type: 'code', state,
     resource, scope, code_challenge: challenge, code_challenge_method: 'S256',
   };
   const page = await fetch(origin + '/oauth/authorize?' + new URLSearchParams(params), {headers:{Cookie:cookie}});
@@ -60,16 +60,22 @@ async function authorizationCode(origin, scope, cookie = "", path = "/mcp") {
     return match[1];
   };
   const consent = await form(origin, '/oauth/authorize', {
-    decision: 'approve', handle: field('handle'), csrf: field('csrf'),
+    decision, handle: field('handle'), csrf: field('csrf'),
   },cookie);
   assert.equal(consent.status, 303);
   const result = new URL(consent.headers.get('location'));
-  assert.equal(result.origin + result.pathname, callback);
+  assert.equal(result.origin + result.pathname, registration.callback);
   assert.equal(result.searchParams.get('state'), state);
+  assert.equal(result.searchParams.get('iss'), origin);
+  if (decision === 'deny') {
+    assert.equal(result.searchParams.get('error'), 'access_denied');
+    assert.equal(result.searchParams.has('code'), false);
+    return;
+  }
   const code = result.searchParams.get('code');
   assert.ok(code);
   return {
-    client_id: clientId, grant_type: 'authorization_code', redirect_uri: callback,
+    client_id: registration.clientId, grant_type: 'authorization_code', redirect_uri: registration.callback,
     code_verifier: verifier, resource, code,
   };
 }
@@ -407,4 +413,96 @@ test('email operators authenticate both MCP resources and admit only pilot mail'
     await form(origin,'/login/logout',{},session);
     assert.equal((await fetch(origin+'/api/session',{headers:{Cookie:session}})).status,401);
   }
+});
+
+test('hosted client metadata binds PKCE grants to the approved callback, resource and scopes', async t => {
+  const chat = {clientId:'https://chatgpt.com/oauth/client.json', callback:'https://chatgpt.com/connector_platform_oauth_redirect'};
+  const grok = {clientId:'https://cursor.com/oauth/mcp-client.json', callback:'https://www.cursor.com/agents/mcp/oauth/callback'};
+  const localOnly = 'http://localhost:8787/callback';
+  const approved = {[chat.clientId]:[chat.callback], [grok.clientId]:[grok.callback, localOnly]};
+  const documents = new Map([
+    [chat.clientId, {client_id:chat.clientId, redirect_uris:[chat.callback], token_endpoint_auth_method:'private_key_jwt', token_endpoint_auth_methods_supported:['none','private_key_jwt']}],
+    [grok.clientId, {client_id:grok.clientId, redirect_uris:[grok.callback], token_endpoint_auth_method:'none'}],
+  ]);
+  const requested = [];
+  const runtime = await startRuntime({
+    bindings:{OAUTH_CIMD_CLIENTS:JSON.stringify(approved)},
+    outboundService: request => {
+      requested.push(request.url);
+      assert.ok(documents.has(request.url));
+      return Response.json(documents.get(request.url), {headers:{'Cache-Control':'no-store'}});
+    },
+  });
+  t.after(() => runtime.close());
+  const {origin} = runtime;
+  const as = await json(await fetch(origin+'/.well-known/oauth-authorization-server'));
+  assert.equal(as.client_id_metadata_document_supported, true);
+  assert.deepEqual(as.token_endpoint_auth_methods_supported, ['none']);
+  const prm = await json(await fetch(origin+'/.well-known/oauth-protected-resource/mcp'));
+  assert.ok(prm.scopes_supported.includes('offline_access'));
+  const authorize = (client, redirect, other = {}) => fetch(origin+'/oauth/authorize?'+new URLSearchParams({
+    client_id:client, redirect_uri:redirect, state:'request-state', response_type:'code', resource:origin+'/mcp',
+    code_challenge_method:'S256', code_challenge:createHash('sha256').update('fixture').digest('base64url'), scope:'read', ...other,
+  }), {redirect:'manual'});
+  assert.equal((await authorize('https://unregistered.example/client.json',grok.callback)).status,400);
+  assert.equal((await authorize(chat.clientId,chat.callback+'/')).status,400);
+  assert.deepEqual(requested,[]);
+  assert.equal((await authorize(grok.clientId,localOnly)).status,400);
+  const invalid = await authorize(chat.clientId,chat.callback,{scope:'unknown'});
+  assert.equal(invalid.status,303);
+  const dest = new URL(invalid.headers.get('Location'));
+  assert.equal(dest.origin+dest.pathname,chat.callback);
+  assert.equal(dest.searchParams.get('error'),'invalid_scope');
+  assert.equal(dest.searchParams.get('iss'),origin);
+  assert.equal(dest.searchParams.get('state'),'request-state');
+
+  for (const client of [chat,grok]) {
+    await authorizationCode(origin,'read','', '/mcp',client,'deny');
+    const grant = await authorizationCode(origin,'read offline_access','', '/mcp',client);
+    const wrongMethod = await json(await form(origin,'/oauth/token',{...grant, client_assertion:'unsupported'}),400);
+    assert.equal(wrongMethod.error,'invalid_client');
+    const tokens = await json(await form(origin,'/oauth/token',grant));
+    const sdkClient = await mcp(t,origin,tokens.access_token);
+    const listed = await toolsFor(sdkClient);
+    assert.ok(listed.every(tool => tool._meta.securitySchemes[0].scopes[0] === 'read'));
+    assert.deepEqual((await call(sdkClient,'issues_list')).items,[]);
+    const forbidden = await rpc(origin,'tools/call',{name:'send_test',arguments:{}},tokens.access_token);
+    const challenge = forbidden.headers.get('www-authenticate');
+    assert.equal(forbidden.status,403);
+    assert.match(challenge,/scope="send"/);
+    assert.deepEqual((await forbidden.json()).result._meta['mcp/www_authenticate'],[challenge]);
+    const renew = {grant_type:'refresh_token',refresh_token:tokens.refresh_token,client_id:client.clientId,resource:origin+'/mcp'};
+    assert.equal((await json(await form(origin,'/oauth/token',{...renew,resource:origin+'/reader/mcp'}),400)).error,'invalid_target');
+    assert.ok((await json(await form(origin,'/oauth/token',renew))).access_token);
+  }
+  documents.get(grok.clientId).client_id = 'https://other.example/client.json';
+  assert.equal((await authorize(grok.clientId,grok.callback)).status,400);
+  documents.get(chat.clientId).token_endpoint_auth_methods_supported = ['private_key_jwt'];
+  assert.equal((await authorize(chat.clientId,chat.callback)).status,400);
+});
+
+test('Streamable HTTP negotiates hosted client revisions and accepts batches only in March 2025', async t => {
+  const {origin} = await workspace(t);
+  const {access_token:bearer} = await token(origin,'read');
+  const send = (body,version) => fetch(origin+'/mcp',{method:'POST',headers:{
+    Authorization:'Bearer '+bearer, 'Content-Type':'application/json', Accept:'application/json, text/event-stream',
+    ...(version ? {'MCP-Protocol-Version':version} : {}),
+  }, body:JSON.stringify(body)});
+  const request = (method,params={},id=1) => ({jsonrpc:'2.0',method,params,id});
+  const list = request('tools/list');
+  for (const revision of ['2025-03-26','2025-06-18','2025-11-25']) {
+    const initialized = await json(await send(request('initialize',{protocolVersion:revision,capabilities:{},clientInfo:{name:'fixture',version:'1'}})));
+    assert.equal(initialized.result.protocolVersion,revision);
+    const tools = (await json(await send(list,revision))).result.tools;
+    assert.ok(tools.length>0);
+    assert.equal(Object.hasOwn(tools[0],'outputSchema'),revision!=='2025-03-26');
+  }
+  const call = request('tools/call',{name:'issues_list',arguments:{}},2);
+  const batch = [request('ping'),{jsonrpc:'2.0',method:'notifications/initialized'},call];
+  const replies = await json(await send(batch));
+  assert.deepEqual(replies.map(reply=>reply.id),[1,2]);
+  assert.equal(replies[1].result.structuredContent,undefined);
+  assert.deepEqual(JSON.parse(replies[1].result.content[0].text).items,[]);
+  assert.equal((await send(batch,'2025-06-18')).status,400);
+  assert.equal((await send(list,'unsupported')).status,400);
 });
