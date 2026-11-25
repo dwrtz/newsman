@@ -26,6 +26,33 @@ pub struct Mail {
     pub campaign_id: Option<String>,
 }
 
+/// Format one SES sender mailbox. RFC 2047 encoded words are at most 75 bytes.
+pub fn sender_mailbox(name: Option<&str>, address: &str) -> String {
+    let mut name = name.unwrap_or_default().trim();
+    if name.is_empty() || name.chars().any(char::is_control) {
+        return address.to_owned();
+    }
+    if name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'-'))
+    {
+        return format!("{name} <{address}>");
+    }
+    let mut words = Vec::new();
+    while !name.is_empty() {
+        let mut end = name.len().min(45);
+        while !name.is_char_boundary(end) {
+            end -= 1;
+        }
+        words.push(format!(
+            "=?UTF-8?B?{}?=",
+            STANDARD.encode(&name.as_bytes()[..end])
+        ));
+        name = &name[end..];
+    }
+    format!("{} <{address}>", words.join(" "))
+}
+
 pub fn ses_payload(mail: &Mail, configuration_set: &str) -> Value {
     let mut simple = json!({"Subject":{"Data":mail.subject,"Charset":"UTF-8"},
         "Body":{"Text":{"Data":mail.text,"Charset":"UTF-8"},"Html":{"Data":mail.html,"Charset":"UTF-8"}}});
@@ -646,9 +673,35 @@ mod tests {
     }
 
     #[test]
+    fn display_names_support_international_publications_and_legacy_values() {
+        let name = "Éditions, 音楽 ".repeat(9);
+        let result = sender_mailbox(Some(&name), "news@example.org");
+        let encoded = result.strip_suffix(" <news@example.org>").unwrap();
+        let mut decoded = String::new();
+        for word in encoded.split(' ') {
+            assert!(word.len() <= 75);
+            let bytes = STANDARD
+                .decode(
+                    word.strip_prefix("=?UTF-8?B?")
+                        .unwrap()
+                        .strip_suffix("?=")
+                        .unwrap(),
+                )
+                .unwrap();
+            decoded.push_str(std::str::from_utf8(&bytes).unwrap());
+        }
+        assert_eq!(decoded, name.trim());
+        assert_eq!(sender_mailbox(None, "news@example.org"), "news@example.org");
+        assert_eq!(
+            sender_mailbox(Some("News\r\nInjected"), "news@example.org"),
+            "news@example.org"
+        );
+    }
+
+    #[test]
     fn newsletter_uses_individual_destination_and_rfc8058_headers() {
         let mut mail = Mail {
-            from: "a@example.org".into(),
+            from: sender_mailbox(Some("AudioTech News"), "a@example.org"),
             reply_to: "b@example.org".into(),
             to: "c@example.org".into(),
             subject: "Issue".into(),
@@ -659,6 +712,11 @@ mod tests {
             campaign_id: Some("c".into()),
         };
         let payload = ses_payload(&mail, "newsman");
+        assert_eq!(
+            payload["FromEmailAddress"],
+            "AudioTech News <a@example.org>"
+        );
+        assert_eq!(payload["ReplyToAddresses"], json!(["b@example.org"]));
         assert_eq!(
             payload["Destination"]["ToAddresses"],
             json!(["c@example.org"])

@@ -180,7 +180,7 @@ async fn prepare(tx: &mut Tx<'_>, input: &Value) -> Res<Value> {
     let id = uid("plan");
     let mut plan = json!({"id":id,"issue_digest":rendered["digest"],"eligibility_digest":audience_digest(&ids),
         "expires_at":(timestamp+Duration::minutes(PLAN_TTL_MIN)).to_rfc3339(),"due_at":due.to_rfc3339(),
-        "subject":rendered["subject"],"from_address":rendered["from_address"],"reply_to":rendered["reply_to"],
+        "subject":rendered["subject"],"from_name":rendered["from_name"],"from_address":rendered["from_address"],"reply_to":rendered["reply_to"],
         "counts":[count("eligible",ids.len()),count("excluded",excluded)],"audience_rule":input["audience"],
         "warnings":rendered["warnings"],"cost":{"currency":"USD","estimated_messages":ids.len(),"ses_base":ids.len() as f64*0.0001}});
     let settings_digest = hash_json(&settings)?;
@@ -340,7 +340,7 @@ async fn test_send(tx: &mut Tx<'_>, input: &Value) -> Res<Value> {
     tx.put("job", &id, job.clone())?;
     tx.put("mail_queue",&id,json!({"id":id,"kind":"test","subscriber_id":id,"state":"queued","created_at":now(),
         "subject":format!("[Test] {}",req_str(&rendered,"subject")?),"html":rendered["html"],"text":rendered["plain_text"],
-        "from_address":rendered["from_address"],"reply_to":rendered["reply_to"],"recipient":canonical,"version":1}))?;
+        "from_name":rendered["from_name"],"from_address":rendered["from_address"],"reply_to":rendered["reply_to"],"recipient":canonical,"version":1}))?;
     Ok(job_out(&job))
 }
 
@@ -747,7 +747,12 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
             tx.put("link", &id, link)?;
         }
         return Ok(Some(Mail {
-            from: req_str(rendered, "from_address")?.into(),
+            from: provider::sender_mailbox(
+                rendered["from_name"]
+                    .as_str()
+                    .or(settings["publication_name"].as_str()),
+                req_str(rendered, "from_address")?,
+            ),
             reply_to: req_str(rendered, "reply_to")?.into(),
             to: req_str(&sub, "email")?.into(),
             subject: req_str(rendered, "subject")?.into(),
@@ -803,10 +808,14 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
     }
     Ok(Some(Mail {
         to: recipient,
-        from: q["from_address"]
-            .as_str()
-            .unwrap_or(req_str(&settings, "from_address")?)
-            .into(),
+        from: provider::sender_mailbox(
+            q["from_name"]
+                .as_str()
+                .or(settings["publication_name"].as_str()),
+            q["from_address"]
+                .as_str()
+                .unwrap_or(req_str(&settings, "from_address")?),
+        ),
         reply_to: q["reply_to"]
             .as_str()
             .unwrap_or(req_str(&settings, "reply_to")?)

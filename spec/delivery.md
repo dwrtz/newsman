@@ -46,3 +46,5 @@ Retain backups and test restoration of D1, private files and signing configurati
 ### Confirmation reminders
 
 With `CONFIRMATION_REMINDER_ENABLED=true`, a new pending signup schedules one reminder for 48 hours after the initial request. The next available maintenance tick issues a fresh 24-hour confirmation link and queues the email in the same transaction that marks the reminder sent. Manual requests do not postpone the reminder. Confirmed readers, opt-outs, erased and suppressed addresses, and imports without a reader-initiated request receive no automatic reminder. The delivery worker rechecks the current challenge before submission.
+
+Use the publication name as the sender display name for newsletter issues, test messages, confirmation emails, reminders and operator sign-in mail. SES receives a From mailbox such as `Example News <newsletter@example.org>` and the separately configured Reply-To address. International names use RFC 2047 encoding. Previews and send plans include the display name. Campaigns use the name and address from their frozen settings.
