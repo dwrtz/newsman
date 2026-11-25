@@ -7,6 +7,7 @@ mod email_login;
 mod identity_ops;
 mod mcp;
 mod provider;
+mod publisher;
 mod reporting;
 mod schema;
 mod transfers;
@@ -196,6 +197,9 @@ async fn route(mut req: Request, env: &Env) -> Res<Response> {
     let url = req.url()?;
     let path = url.path();
     let method = req.method();
+    if path.starts_with("/integrations/publisher/") {
+        return publisher::http(req, env).await;
+    }
     if path.starts_with("/workload-identity/") {
         return workload::discovery(&req, env);
     }
@@ -346,5 +350,6 @@ pub async fn queue(batch: MessageBatch<Value>, env: Env, _: Context) -> worker::
 async fn maintenance(env: &Env) -> Res<()> {
     access::cleanup(env).await?;
     transfers::tick(env).await?;
+    audience::reminders(env).await?;
     delivery::tick(env).await
 }

@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -133,10 +133,16 @@
       "AWS_SESSION_TOKEN",
       "READER_PROOF_SECRET",
       "NEWSMAN_SECRET",
-      "AWS_WORKLOAD_KEY"
+      "AWS_WORKLOAD_KEY",
+      "PUBLISHER_INTEGRATION_KEY"
     ]
   },
   "changelog": [
+    {
+      "version": "0.5.0",
+      "date": "2026-11-25",
+      "note": "Pending readers can receive one automatic confirmation reminder after 48 hours. A publication can connect its signup form, acknowledge durable first confirmations and honor later opt-outs from its previous provider."
+    },
     {
       "version": "0.4.2",
       "date": "2026-11-25",

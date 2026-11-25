@@ -47,3 +47,9 @@ In Settings set the sender, postal footer, test recipients and a monthly send bu
 ## Data and recovery
 
 Keep D1 backups, private R2 data, and keys in the installation owner's account. Apply migrations before enabling a new Worker version. After restoring an older database, keep dispatch paused while reconciling provider receipts, current suppressions and jobs since the backup. Test a restore using separate resources and the local capture sink or a controlled mailbox. Reported SES charges concern sending volume; Worker, queue, R2, D1 and SNS usage have their own meters.
+
+### Reader reminders and a separate publication website
+
+Apply `migrations/0003_confirmation_reminders.sql` and set `CONFIRMATION_REMINDER_ENABLED=true` to send one confirmation reminder after 48 hours. The existing minute schedule processes it. New reader requests start the clock. The link in the reminder expires after 24 hours.
+
+For a publication that already operates a signup form, set `NEWSMAN_PUBLISHER_INTEGRATION=yes` when generating the deployment and provision the same dedicated, random 32-byte secret named `PUBLISHER_INTEGRATION_KEY` in Newsman and the form backend. Connect the backend to the Newsman Worker with a service binding. Keep privacy decisions and advertising credentials in the publication backend. The optional API and its event acknowledgements are described in the [access specification](../spec/access.md).

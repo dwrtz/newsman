@@ -21,7 +21,11 @@ struct StoredRecord {
 }
 
 /// Used only for bounded indexed reads. Commands continue to apply mutations through the optimistic Tx.
-async fn records(tx: &Tx<'_>, sql: &str, args: &[wasm_bindgen::JsValue]) -> Res<Vec<Value>> {
+pub(crate) async fn records(
+    tx: &Tx<'_>,
+    sql: &str,
+    args: &[wasm_bindgen::JsValue],
+) -> Res<Vec<Value>> {
     let rows = tx
         .env
         .d1("DB")?

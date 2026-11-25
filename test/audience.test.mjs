@@ -82,3 +82,57 @@ test('reader self-service is scanner safe and erasure leaves only an address tom
   assert.equal((await call('subscriber_history',{id:sub.id})).items.length,0);
   assert.equal((await db.prepare("SELECT count(*) n FROM newsman_records WHERE kind='mail_queue'").first()).n,0);
 });
+
+test('publisher signup, one 48-hour reminder, scanner-safe first confirmation and legacy opt-out', async t => {
+  const secret = 'publication-integration-local-fixture-only';
+  const {mf, origin, close} = await startRuntime({bindings:{PUBLISHER_INTEGRATION_KEY:secret, CONFIRMATION_REMINDER_ENABLED:'true'}});
+  t.after(close);
+  const db = await mf.getD1Database('DB');
+  const service = async (path, body, credential = secret) => fetch(origin+'/integrations/publisher/'+path, {
+    method:body ? 'POST' : 'GET', headers:{Authorization:'Bearer '+credential,'Content-Type':'application/json'},
+    body:body ? JSON.stringify(body) : undefined
+  });
+  const email='reminder@example.test';
+  const input={email,signup_id:key(),campaign:{utm_campaign:'music'}};
+  assert.equal((await service('events', undefined, 'unrelated')).status,403);
+  const send = async v => (await service('subscribe',v)).json();
+  const first = await send(input);
+  assert.ok(first.receipt.id);
+  assert.deepEqual(await send(input),first);
+  assert.equal((await send({...input,signup_id:key()})).receipt,null);
+  const subscriber = async () => JSON.parse((await db.prepare("SELECT body FROM newsman_records WHERE kind='subscriber' AND id=?").bind(first.receipt.id).first()).body);
+  const messages = async () => (await db.prepare("SELECT body FROM newsman_records WHERE kind='mail_queue' AND json_extract(body,'$.subscriber_id')=? ORDER BY json_extract(body,'$.created_at')").bind(first.receipt.id).all()).results.map(row=>JSON.parse(row.body));
+  const tick = async () => (await mf.getWorker()).scheduled();
+  const before=await subscriber();
+  assert.equal(before.reminder_due_s-before.last_challenge_at,48*3600);
+  await tick();
+  assert.equal((await messages()).length,1);
+  const due = () => db.prepare("UPDATE newsman_records SET body=json_set(body,'$.reminder_due_s',?) WHERE kind='subscriber' AND id=?").bind(Math.floor(Date.now()/1000)-1, first.receipt.id).run();
+  await due(); await tick(); await tick();
+  const mail=await messages();
+  assert.equal(mail.length,2);
+  assert.match(mail[1].subject,/Reminder/);
+  assert.notEqual(mail[1].nonce,mail[0].nonce);
+  const fresh=await subscriber();
+  assert.equal(fresh.challenge_until-fresh.last_challenge_at,86400);
+  const token=mail[1].text.match(/\/confirm\/(\S+)/)[1];
+  const link=origin+'/confirm/'+token;
+  assert.equal((await fetch(link)).status,200);
+  assert.equal((await subscriber()).status,'pending');
+  const confirm=()=>fetch(link,{method:'POST',headers:{Origin:origin},redirect:'manual'});
+  assert.equal((await confirm()).status,303); assert.equal((await confirm()).status,303);
+  const events=(await (await service('events')).json()).items;
+  assert.deepEqual(events.map(e=>e.type).sort(),['accepted','confirmed']);
+  assert.equal(events[0].campaign.utm_campaign,'music');
+  assert.ok(events.every(e=>e.subscriber===first.receipt.id && e.signup_id===input.signup_id));
+  await service('ack',{ids:events.map(e=>e.id)});
+  assert.equal((await (await service('events')).json()).items.length,0);
+  assert.equal((await subscriber()).reminder_due_s,undefined);
+  const at=Math.floor(Date.now()/1000);
+  await service('opt-out',{email,at:at-3600});
+  assert.equal((await subscriber()).status,'active');
+  await service('opt-out',{email,at});
+  assert.equal((await subscriber()).status,'unsubscribed');
+  await due(); await tick();
+  assert.equal((await messages()).length,2);
+});

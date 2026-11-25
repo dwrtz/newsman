@@ -46,3 +46,5 @@ Capture actual signup, delivery and report receipts from controlled tests. Inspe
 ## Reference screens
 
 Generate gallery captures from the running console with only synthetic content. Show the overview, the message composer and the page a publisher uses to connect an MCP client. Keep credentials, personal data and live subscriber records out of screenshots. [Overview](shots/overview.png) · [Composer](shots/compose.png) · [HTTP MCP](shots/mcp.png)
+
+Enable the reminder on a controlled installation. Verify the initial signup schedules a reminder 48 hours ahead. At the deadline two maintenance ticks must yield exactly one new confirmation email and a fresh proof. An earlier confirmation or opt-out cancels the reminder. In a connected publication, retry signup, consume the confirmation twice and restart the event consumer before acknowledgement. Check one accepted lead and one linked first confirmation. Verify that an advertising opt-out and a QA-only signup produce no production advertising event.

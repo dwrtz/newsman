@@ -6,6 +6,7 @@ use sha2::Sha256;
 const CAMPAIGN_KEYS: [&str; 4] = ["utm_source", "utm_medium", "utm_campaign", "utm_content"];
 const PROOF_TTL_SECONDS: i64 = 24 * 3600;
 const RESEND_SECONDS: i64 = 120;
+const REMINDER_DELAY: i64 = 48 * 3600;
 
 pub fn email_key(email: &str) -> Option<String> {
     let email = email.trim();
@@ -259,7 +260,7 @@ pub fn consent_event(
 }
 
 fn clear_challenge(s: &mut Value) {
-    for k in ["challenge_nonce", "challenge_until"] {
+    for k in ["challenge_nonce", "challenge_until", "reminder_due_s"] {
         s.as_object_mut().unwrap().remove(k);
     }
 }
@@ -294,9 +295,50 @@ pub async fn apply_feedback_suppression(tx: &mut Tx<'_>, email: &str, reason: &s
     )
 }
 
+pub(crate) async fn legacy_opt_out(tx: &mut Tx<'_>, email: &str, at: i64) -> Res<()> {
+    if at <= 0 || at > epoch() + 300 {
+        return Err(AppError::invalid("Invalid opt-out time"));
+    }
+    let Some(mut sub) = lookup(tx, email).await? else {
+        return Ok(());
+    };
+    if !matches!(
+        sub["status"].as_str(),
+        Some("active" | "pending" | "unsubscribed")
+    ) || sub["legacy_opt_out_s"].as_i64().is_some_and(|t| t >= at)
+    {
+        return Ok(());
+    }
+    let last_opt_in = sub["last_opt_in_s"].as_i64().or_else(|| {
+        sub["confirmed_at"]
+            .as_str()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.timestamp())
+    });
+    if last_opt_in.is_some_and(|t| t > at) {
+        return Ok(());
+    }
+    sub["legacy_opt_out_s"] = json!(at);
+    sub["status"] = json!("unsubscribed");
+    sub["suppression_reason"] = json!("reader_opt_out");
+    clear_challenge(&mut sub);
+    increment(&mut sub);
+    persist_subscriber(tx, &sub)?;
+    consent_event(
+        tx,
+        req_str(&sub, "id")?,
+        "unsubscribed",
+        "legacy_provider",
+        Some("reader_opt_out"),
+    )
+}
+
 /// Erasure retains only the keyed address tombstone needed to block future mail.
 pub async fn erase_record(tx: &mut Tx<'_>, sub: &Value, version: u64) -> Res<()> {
     let id = req_str(sub, "id")?;
+    for event in ["accepted", "confirmed"] {
+        tx.delete("publisher_event", &format!("{event}_{id}"))?;
+    }
     let email = sub["email"].as_str().and_then(email_key);
     for (kind, field) in [
         ("consent_event", "object_id"),
@@ -345,7 +387,12 @@ fn check_inbox() -> Value {
     json!({"outcome":"check_inbox","next_path":"/subscribe/#check-inbox"})
 }
 
-async fn signup(tx: &mut Tx<'_>, a: &Value, resend: bool) -> Res<Value> {
+pub(crate) async fn signup(
+    tx: &mut Tx<'_>,
+    a: &Value,
+    resend: bool,
+    publisher: bool,
+) -> Res<Value> {
     let email = email_key(req_str(a, "email")?)
         .ok_or_else(|| AppError::invalid("A valid email address is required"))?;
     if !crate::email_login::pilot_permitted(tx.env, &email) {
@@ -374,24 +421,50 @@ async fn signup(tx: &mut Tx<'_>, a: &Value, resend: bool) -> Res<Value> {
     if count >= 5 {
         return Ok(check_inbox());
     }
-    let settings = crate::editorial::settings(tx).await?;
-    let nonce = uid("c");
     let id = req_str(&sub, "id")?.to_owned();
     if entry.is_none() {
         sub["first_touch"] = attribution(&a["campaign"]);
+        if publisher {
+            sub["publisher_signup_at"] = json!(t);
+            sub["publisher_signup_id"] = a["signup_id"].clone();
+            crate::publisher::record_event(tx, &sub, "accepted")?;
+        }
+        consent_event(tx, &id, "signup_pending", "reader", None)?;
     } else {
         increment(&mut sub);
     }
+    if reminder_enabled(tx.env)
+        && sub["status"] == "pending"
+        && sub["reminder_sent"] != true
+        && sub["reminder_due_s"].is_null()
+    {
+        sub["reminder_due_s"] = json!(t + REMINDER_DELAY);
+    }
+    queue_confirmation(tx, &mut sub, t, count + 1, false).await?;
+    Ok(check_inbox())
+}
+
+fn reminder_enabled(env: &Env) -> bool {
+    conf(env, "CONFIRMATION_REMINDER_ENABLED").as_deref() == Some("true")
+}
+
+async fn queue_confirmation(
+    tx: &mut Tx<'_>,
+    sub: &mut Value,
+    t: i64,
+    count: i64,
+    reminder: bool,
+) -> Res<()> {
+    let settings = crate::editorial::settings(tx).await?;
+    let id = req_str(sub, "id")?.to_owned();
+    let nonce = uid("c");
     sub["challenge_nonce"] = json!(nonce);
     sub["challenge_until"] = json!(t + PROOF_TTL_SECONDS);
     sub["last_challenge_at"] = json!(t);
-    sub["challenge_day"] = json!(day);
-    sub["challenge_count"] = json!(count + 1);
+    sub["challenge_day"] = json!(t / 86400);
+    sub["challenge_count"] = json!(count);
     sub["consent_version"] = settings["consent_version"].clone();
-    persist_subscriber(tx, &sub)?;
-    if entry.is_none() {
-        consent_event(tx, &id, "signup_pending", "reader", None)?;
-    }
+    persist_subscriber(tx, sub)?;
     let token = proof(&proof_secret(tx.env)?, "join", &id, &nonce);
     let origin = req_str(&settings, "public_origin")?.trim_end_matches('/');
     let link = format!("{origin}/confirm/{token}");
@@ -407,9 +480,42 @@ async fn signup(tx: &mut Tx<'_>, a: &Value, resend: bool) -> Res<Value> {
         escape(&link)
     );
     let q = uid("mail");
+    let subject = if reminder {
+        format!("Reminder to confirm your subscription to {publication}")
+    } else {
+        format!("Confirm your subscription to {publication}")
+    };
     tx.put("mail_queue",&q,json!({"id":q,"kind":"confirmation","subscriber_id":id,"nonce":nonce,"state":"queued","version":1,
-        "created_at":now(),"subject":format!("Confirm your subscription to {publication}"),"text":message,"html":body}))?;
-    Ok(check_inbox())
+        "created_at":now(),"subject":subject,"text":message,"html":body}))?;
+    Ok(())
+}
+
+pub async fn reminders(env: &Env) -> Res<()> {
+    if !reminder_enabled(env) {
+        return Ok(());
+    }
+    let mut tx = Tx::begin(env, Actor::system()).await?;
+    let t = epoch();
+    let due = crate::delivery::records(&tx,
+        "SELECT body FROM newsman_records WHERE kind='subscriber' AND json_extract(body,'$.reminder_due_s') <= ? ORDER BY json_extract(body,'$.reminder_due_s'),id LIMIT 16",
+        &[(t as f64).into()]).await?;
+    for mut sub in due {
+        sub.as_object_mut().unwrap().remove("reminder_due_s");
+        increment(&mut sub);
+        if sub["status"] == "pending"
+            && sub["reminder_sent"] != true
+            && sub["challenge_nonce"].is_string()
+            && sub["email"]
+                .as_str()
+                .is_some_and(|email| crate::email_login::pilot_permitted(env, email))
+        {
+            sub["reminder_sent"] = json!(true);
+            queue_confirmation(&mut tx, &mut sub, t, 1, true).await?;
+        } else {
+            persist_subscriber(&mut tx, &sub)?;
+        }
+    }
+    tx.commit().await
 }
 
 async fn consume(tx: &mut Tx<'_>, a: &Value, join: bool) -> Res<Value> {
@@ -434,9 +540,11 @@ async fn consume(tx: &mut Tx<'_>, a: &Value, join: bool) -> Res<Value> {
         }
         let first = sub["first_confirmation_recorded"] != true;
         if first {
+            crate::publisher::record_event(tx, &sub, "confirmed")?;
             sub["confirmed_at"] = json!(now());
             sub["first_confirmation_recorded"] = json!(true);
         }
+        sub["last_opt_in_s"] = json!(epoch());
         sub["consent_epoch"] = json!(sub["consent_epoch"].as_u64().unwrap_or(0) + 1);
         sub["last_used_nonce"] = json!(nonce);
         sub["status"] = json!("active");
@@ -510,7 +618,7 @@ pub async fn run(tx: &mut Tx<'_>, name: &str, a: &Value) -> Res<Value> {
             }
             Ok(r)
         }
-        "reader_subscribe" | "reader_resend" => signup(tx, a, name == "reader_resend").await,
+        "reader_subscribe" | "reader_resend" => signup(tx, a, name == "reader_resend", false).await,
         "reader_confirm" | "reader_unsubscribe" => consume(tx, a, name == "reader_confirm").await,
         "subscribers_list" | "segment_preview" => {
             let search = a["search"].as_str().unwrap_or("").trim().to_lowercase();

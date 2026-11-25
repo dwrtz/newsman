@@ -829,7 +829,7 @@ async fn apply_row(tx: &mut Tx<'_>, r: &Value) -> Res<()> {
     }
     if matches!(status, "suppressed" | "unsubscribed") {
         s["suppression_reason"] = r["reason"].clone();
-        for k in ["challenge_nonce", "challenge_until"] {
+        for k in ["challenge_nonce", "challenge_until", "reminder_due_s"] {
             s.as_object_mut().unwrap().remove(k);
         }
     }
