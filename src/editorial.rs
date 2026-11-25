@@ -175,7 +175,7 @@ async fn issue_list(tx: &Tx<'_>, args: &Value) -> Res<Value> {
     issue_page(rows, args, cursor.as_ref(), cut, signature)
 }
 
-fn revision_key(id: &str, version: u64) -> String {
+pub(crate) fn revision_key(id: &str, version: u64) -> String {
     format!("{id}:{version:016}")
 }
 
@@ -672,7 +672,7 @@ fn render_snapshot(issue: &Value, prefs: &Value, hero: Option<&str>) -> Res<Valu
     let mut plain = req_str(draft, "plain_text")?.to_owned();
     if let Some(src) = hero {
         html = format!(
-            "<figure><img src=\"{}\" alt=\"{}\"></figure>{html}",
+            r#"<figure style="margin:0 0 24px"><img src="{}" alt="{}" width="640" style="display:block;width:100%;max-width:640px;height:auto"></figure>{html}"#,
             escape(src),
             escape(req_str(draft, "hero_alt")?)
         );
@@ -733,6 +733,24 @@ pub async fn media(env: &Env, id: &str, token: &str) -> Res<Response> {
         asset["sha256"].as_str().unwrap_or(""),
     );
     mac.verify_slice(&bytes).map_err(|_| missing())?;
+    image_response(env, &asset).await
+}
+
+pub async fn reader_art(env: &Env, id: &str) -> Res<Response> {
+    let missing = || AppError::new("not_found", "Image not found.", 404);
+    if crate::core::conf(env, "READER_ART_ASSET").as_deref() != Some(id) {
+        return Err(missing());
+    }
+    let tx = Tx::begin(env, Actor::system()).await?;
+    let asset = tx.get("file", id).await?.ok_or_else(missing)?;
+    if asset["kind"] != "hero" || asset["state"] != "complete" {
+        return Err(missing());
+    }
+    image_response(env, &asset).await
+}
+
+async fn image_response(env: &Env, asset: &Value) -> Res<Response> {
+    let missing = || AppError::new("not_found", "Image not found.", 404);
     let mime = asset["mime"].as_str().unwrap_or("");
     if !matches!(
         mime,
@@ -740,7 +758,7 @@ pub async fn media(env: &Env, id: &str, token: &str) -> Res<Response> {
     ) {
         return Err(missing());
     }
-    let key = req_str(&asset, "object_key")?;
+    let key = req_str(asset, "object_key")?;
     let object = env
         .bucket("FILES")?
         .get(key)

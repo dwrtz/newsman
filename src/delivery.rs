@@ -40,7 +40,7 @@ pub(crate) async fn records(
 }
 async fn ready_attempt(tx: &Tx<'_>, paused: bool, at: i64) -> Res<Option<Value>> {
     let rows=records(tx,"SELECT body FROM newsman_records WHERE kind='attempt' AND json_extract(body,'$.state')='queued'
-        AND coalesce(json_extract(body,'$.retry_at'),0)<=? AND (?=0 OR json_extract(body,'$.kind')!='campaign')
+        AND coalesce(json_extract(body,'$.retry_at'),0)<=? AND (?=0 OR json_extract(body,'$.kind') NOT IN ('campaign','welcome_issue'))
         ORDER BY coalesce(json_extract(body,'$.retry_at'),0),id LIMIT 1",&[(at as f64).into(),(i32::from(paused)).into()]).await?;
     Ok(rows.into_iter().next())
 }
@@ -130,25 +130,25 @@ fn job_out(v: &Value) -> Value {
     public(v, &["id", "version", "state", "kind", "counts", "error"])
 }
 
-async fn sendable(tx: &Tx<'_>, issue: &Value) -> Res<()> {
+pub(crate) async fn previously_sent(tx: &Tx<'_>, issue: &Value) -> Res<bool> {
+    if issue["state"] == "historical" {
+        return Ok(true);
+    }
     let external = issue["draft"]["source"]["external_key"]
         .as_str()
         .or_else(|| issue["external_key"].as_str());
+    let matches = records(tx, "SELECT body FROM newsman_records WHERE kind='historical_send'
+        AND (json_extract(body,'$.issue_id')=?1 OR json_extract(body,'$.issue_id')=?2 OR json_extract(body,'$.external_key')=?2)
+        AND lower(json_extract(body,'$.status')) IN ('sent','completed','delivered') LIMIT 1",
+        &[req_str(issue, "id")?.into(), external.map(Into::into).unwrap_or(wasm_bindgen::JsValue::NULL)]).await?;
+    Ok(!matches.is_empty())
+}
+
+async fn sendable(tx: &Tx<'_>, issue: &Value) -> Res<()> {
     if issue["state"] == "archived" {
         return Err(conflict("Archived messages cannot start a new campaign"));
     }
-    if issue["state"] == "historical"
-        || tx.list("historical_send").await?.iter().any(|r| {
-            (r["issue_id"] == issue["id"]
-                || external.is_some_and(|k| r["external_key"] == k || r["issue_id"] == k))
-                && r["status"].as_str().is_some_and(|s| {
-                    matches!(
-                        s.to_ascii_lowercase().as_str(),
-                        "sent" | "completed" | "delivered"
-                    )
-                })
-        })
-    {
+    if previously_sent(tx, issue).await? {
         return Err(conflict(
             "This edition was already sent by the previous publisher",
         ));
@@ -255,6 +255,7 @@ async fn commit_plan(tx: &mut Tx<'_>, input: &Value) -> Res<Value> {
         &id,
         json!({"id":id,"rendered":rendered,"settings":settings}),
     )?;
+    crate::welcome::register(tx, &campaign, &issue, &plan["audience_rule"])?;
     tx.put("campaign", &id, campaign.clone())?;
     let mut completed = stored;
     completed["campaign_id"] = json!(id);
@@ -702,18 +703,26 @@ fn footer(body: &str, link: &str) -> String {
 async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<Mail>> {
     let source = req_str(a, "kind")?;
     let subscriber_id = req_str(a, "subscriber_id")?;
-    if source == "campaign" {
-        let campaign = tx.require("campaign", req_str(a, "campaign_id")?).await?;
+    if matches!(source, "campaign" | "welcome_issue") {
         let Some(sub) = tx.get("subscriber", subscriber_id).await? else {
             return Ok(None);
         };
-        if campaign["state"] == "stopped" || !audience::eligible(&sub) {
+        if !audience::eligible(&sub) {
             return Ok(None);
         }
-        let snapshot = tx
-            .get("message_snapshot", req_str(&campaign, "id")?)
-            .await?
-            .unwrap_or_else(|| campaign.clone());
+        let snapshot = if source == "welcome_issue" {
+            let Some(snapshot) = crate::welcome::snapshot(tx, a).await? else {
+                return Ok(None);
+            };
+            snapshot
+        } else {
+            let id = req_str(a, "campaign_id")?;
+            let campaign = tx.require("campaign", id).await?;
+            if campaign["state"] == "stopped" {
+                return Ok(None);
+            }
+            tx.get("message_snapshot", id).await?.unwrap_or(campaign)
+        };
         let settings = &snapshot["settings"];
         let rendered = &snapshot["rendered"];
         let secret = audience::proof_secret(tx.env)?;
@@ -735,7 +744,7 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
                 html,
                 text,
                 origin,
-                req_str(&campaign, "issue_id")?,
+                req_str(a, "issue_id")?,
                 req_str(a, "id")?,
                 &secret,
             )?
@@ -760,7 +769,7 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
             html: footer(&html, &unsub),
             unsubscribe: Some(unsub),
             attempt_id: submit_id.to_owned(),
-            campaign_id: Some(req_str(&campaign, "id")?.into()),
+            campaign_id: a["campaign_id"].as_str().map(str::to_owned),
         }));
     }
     // Erasing a reader also erases their pending confirmation payload. A queued reference may
@@ -1028,7 +1037,7 @@ async fn next_submission(env: &Env, quota: &Value) -> Res<Work> {
     };
     let key = req_str(&a, "id")?.to_owned();
     let submit_id = uid("ses");
-    let per_issue = if a["kind"] == "campaign" {
+    let per_issue = if matches!(a["kind"].as_str(), Some("campaign" | "welcome_issue")) {
         Some(sha256(
             format!(
                 "{}/{}",

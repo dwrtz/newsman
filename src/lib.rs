@@ -8,9 +8,11 @@ mod identity_ops;
 mod mcp;
 mod provider;
 mod publisher;
+mod reader_pages;
 mod reporting;
 mod schema;
 mod transfers;
+mod welcome;
 mod workload;
 
 use core::{Actor, AppError, Res, Tx};
@@ -230,6 +232,12 @@ async fn route(mut req: Request, env: &Env) -> Res<Response> {
     }
     if path.starts_with("/r/") {
         return delivery::redirect(req, env).await;
+    }
+    if let Some(id) = path.strip_prefix("/reader-art/") {
+        if !matches!(method, Method::Get | Method::Head) {
+            return Ok(Response::error("Use GET or HEAD", 405)?);
+        }
+        return editorial::reader_art(env, id).await;
     }
     if let Some(params) = path.strip_prefix("/media/")
         && let Some((id, token)) = params.split_once('/')

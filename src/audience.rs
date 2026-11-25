@@ -474,11 +474,7 @@ async fn queue_confirmation(
     let message = format!(
         "Confirm your subscription to {publication} by opening this link and choosing Confirm.\n\n{link}"
     );
-    let body = format!(
-        "<p>Confirm your subscription to {}.</p><p><a href=\"{}\">Review and confirm</a></p>",
-        escape(publication),
-        escape(&link)
-    );
+    let body = crate::reader_pages::confirmation_email(tx.env, publication, &link);
     let q = uid("mail");
     let subject = if reminder {
         format!("Reminder to confirm your subscription to {publication}")
@@ -564,7 +560,10 @@ async fn consume(tx: &mut Tx<'_>, a: &Value, join: bool) -> Res<Value> {
             "reader",
             None,
         )?;
-        Ok(json!({"outcome":"confirmed","next_path":"/confirmed/"}))
+        let queued = first && crate::welcome::enqueue(tx, id).await?;
+        Ok(
+            json!({"outcome":"confirmed","next_path":if queued {"/confirmed/?issue=queued"} else {"/confirmed/"}}),
+        )
     } else {
         if matches!(
             sub["status"].as_str(),
@@ -590,7 +589,7 @@ async fn consume(tx: &mut Tx<'_>, a: &Value, join: bool) -> Res<Value> {
     }
 }
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -717,21 +716,6 @@ pub async fn run(tx: &mut Tx<'_>, name: &str, a: &Value) -> Res<Value> {
     }
 }
 
-fn html_page(title: &str, body: &str) -> Res<Response> {
-    let mut r = Response::from_html(format!(
-        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{}</title><main><h1>{}</h1>{body}</main></html>",
-        escape(title),
-        escape(title)
-    ))?;
-    r.headers_mut().set("Cache-Control", "private, no-store")?;
-    r.headers_mut().set("Referrer-Policy", "no-referrer")?;
-    r.headers_mut().set(
-        "Content-Security-Policy",
-        "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-    )?;
-    Ok(r)
-}
-
 fn redirect(path: &str) -> Res<Response> {
     let mut r = Response::empty()?.with_status(303);
     r.headers_mut().set("Location", path)?;
@@ -749,6 +733,9 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
         .unwrap_or_else(|| "direct".into());
     let info = crate::execute_reader(env, "reader_info", json!({}), &ip).await?;
     let title = info["publication_name"].as_str().unwrap_or("Mailing list");
+    let page = |heading: &str, lead: &str, action: &str| {
+        crate::reader_pages::page(env, &info, heading, lead, action)
+    };
     if method == Method::Get && path == "/subscribe" {
         let tagged = attribution(
             &url.query_pairs()
@@ -769,18 +756,26 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
                 )
             })
             .collect::<String>();
-        return crate::form_with_origin(html_page(
-            &format!("Subscribe to {title}"),
+        return crate::form_with_origin(page(
+            "Subscribe by email.",
             &format!(
-                "<form action=\"/api/newsletter/subscribe\" method=\"post\"><label>Email address <input type=\"email\" name=\"email\" autocomplete=\"email\" maxlength=\"254\" required></label>{inputs}<button>Subscribe</button></form><p id=\"check-inbox\">After subscribing, check your inbox to confirm.</p>"
+                "Enter your email to receive {title}. Then check your inbox for a confirmation link."
+            ),
+            &format!(
+                r#"<form id="check-inbox" action="/api/newsletter/subscribe" method="post"><label>Email address<input type="email" name="email" autocomplete="email" maxlength="254" required></label>{inputs}<button>Subscribe</button></form>"#
             ),
         )?);
     }
     if method == Method::Get && path == "/confirmed" {
-        return html_page(
-            "Subscription confirmed",
-            &format!("<p>Thank you for subscribing to {}.</p>", escape(title)),
-        );
+        let queued = url
+            .query_pairs()
+            .any(|(k, v)| k == "issue" && v == "queued");
+        let lead = if queued {
+            "This week’s issue is on its way to your inbox.".to_owned()
+        } else {
+            format!("You’ll receive the next issue of {title} in your inbox.")
+        };
+        return page("You’re subscribed.", &lead, "");
     }
     let scope = if let Some(token) = path.strip_prefix("/confirm/") {
         Some(("reader_confirm", token))
@@ -792,32 +787,46 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
         if token.len() > 1024 || token.is_empty() {
             return Err(AppError::invalid("Invalid reader proof"));
         }
-        let caption = if name == "reader_confirm" {
-            "Confirm subscription"
-        } else {
-            "Unsubscribe"
-        };
         if method == Method::Get {
-            return html_page(
-                caption,
-                &format!("<form method=\"post\"><button>{caption}</button></form>"),
-            );
+            return if name == "reader_confirm" {
+                page(
+                    "Confirm your email.",
+                    &format!("One more step to receive {title} in your inbox."),
+                    r#"<form method="post"><button>Confirm my email</button></form>"#,
+                )
+            } else {
+                page(
+                    "Unsubscribe?",
+                    &format!("Choose unsubscribe to stop receiving {title} at this address."),
+                    r#"<form method="post"><button>Unsubscribe</button></form>"#,
+                )
+            };
         }
         if method == Method::Post {
             let out = crate::execute_reader(env, name, json!({"token":token}), &ip).await?;
+            if out["outcome"] == "expired" && name == "reader_unsubscribe" {
+                return Ok(page(
+                    "This link is unavailable.",
+                    "Open the unsubscribe link in an email you received from this publication.",
+                    "",
+                )?
+                .with_status(410));
+            }
             if out["outcome"] == "expired" {
-                return Ok(html_page(
-                    "Link expired",
-                    "<p><a href=\"/subscribe/\">Request a new confirmation link</a>.</p>",
+                return Ok(page(
+                    "This link has expired.",
+                    "Enter your email again to get a fresh confirmation link.",
+                    r#"<p class="action"><a class="button" href="/subscribe/">Request a new link</a></p>"#,
                 )?
                 .with_status(410));
             }
             if name == "reader_confirm" {
-                return redirect("/confirmed/");
+                return redirect(out["next_path"].as_str().unwrap_or("/confirmed/"));
             }
-            return html_page(
-                "Unsubscribed",
-                "<p>You have been removed from future mailings.</p>",
+            return page(
+                "You’re unsubscribed.",
+                &format!("You’ll no longer receive emails from {title}."),
+                "",
             );
         }
     }
