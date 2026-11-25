@@ -11,7 +11,8 @@ a{color:inherit;text-underline-offset:.24em}
 .archive,footer{font-size:.88rem}
 .archive{font-weight:550;text-decoration:none}
 .archive:hover,footer a:hover{text-decoration:underline}
-.archive span{margin-left:.25em}
+.archive span{display:inline-block;position:relative;width:.55rem;height:.55rem;margin-left:.25rem;border-top:1.5px solid;border-right:1.5px solid;font-size:0;vertical-align:.12rem}
+.archive span::before{content:"";position:absolute;top:-.5px;right:0;width:.7rem;border-top:1.5px solid;transform-origin:right;transform:rotate(-45deg)}
 main{flex:1;display:flex;align-items:center;gap:clamp(16px,4vw,72px);padding:clamp(56px,9vw,134px) 0}
 .copy{flex:1 1 45%;min-width:0}
 h1{font:400 clamp(64px,7.8vw,116px)/.96 var(--serif);letter-spacing:-.045em;margin:0;text-wrap:balance;max-width:12ch}
