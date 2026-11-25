@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -137,6 +137,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.4.1",
+      "date": "2026-11-25",
+      "note": "Browser sign-in, sign-out and the hosted signup form preserve the Origin required for CSRF checks. OAuth consent returns operators to their registered connector callback after approval or denial."
+    },
     {
       "version": "0.4.0",
       "date": "2026-11-25",

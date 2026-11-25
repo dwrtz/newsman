@@ -661,12 +661,12 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
                 )
             })
             .collect::<String>();
-        return html_page(
+        return crate::form_with_origin(html_page(
             &format!("Subscribe to {title}"),
             &format!(
                 "<form action=\"/api/newsletter/subscribe\" method=\"post\"><label>Email address <input type=\"email\" name=\"email\" autocomplete=\"email\" maxlength=\"254\" required></label>{inputs}<button>Subscribe</button></form><p id=\"check-inbox\">After subscribing, check your inbox to confirm.</p>"
             ),
-        );
+        )?);
     }
     if method == Method::Get && path == "/confirmed" {
         return html_page(

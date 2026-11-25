@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { chromium } from "playwright-core";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startRuntime, webClient } from "../scripts/runtime.mjs";
 
 const chromiumPath =
@@ -14,6 +17,95 @@ const chromiumPath =
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
       ].find(existsSync));
+
+test("a browser can sign in, grant or deny a connector, and sign out", async (t) => {
+  const email = "operator@publisher.test";
+  const clientId = "connector-test";
+  const callback = "https://connector.example.test/oauth/callback";
+  const runtime = await startRuntime({ bindings: {
+    OPERATOR_AUTH_MODE: "email",
+    OPERATOR_EMAILS: email,
+    NEWSMAN_SECRET: randomBytes(40).toString("hex"),
+    OAUTH_CLIENTS: JSON.stringify({ [clientId]: [callback] }),
+  } });
+  t.after(() => runtime.close());
+  const browser = await chromium.launch({
+    executablePath: chromiumPath, headless: true, args: ["--no-sandbox"],
+  });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  page.setDefaultTimeout(7000);
+  await page.route(url => url.origin + url.pathname === callback, async route => {
+    assert.equal(route.request().method(), "GET");
+    assert.equal(await route.request().headerValue("referer"), null);
+    await route.fulfill({ contentType: "text/plain", body: "Connector received the authorization response." });
+  });
+
+  const { origin } = runtime;
+  const resource = origin + "/mcp";
+  const verifier = randomBytes(48).toString("base64url");
+  const params = new URLSearchParams({
+    client_id: clientId, redirect_uri: callback, response_type: "code", state: "browser-check",
+    scope: "read", resource, code_challenge_method: "S256",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+  });
+  async function submit(button, path, status) {
+    const pending = page.waitForResponse(response =>
+      response.url() === origin + path && response.request().method() === "POST");
+    await page.getByRole("button", { name: button, exact: true }).click();
+    const response = await pending;
+    assert.equal(await response.request().headerValue("origin"), origin);
+    assert.equal(response.status(), status, path + " returned the wrong status");
+  }
+  async function decide(button) {
+    await submit(button, "/oauth/authorize", 303);
+    await page.getByText("Connector received the authorization response.").waitFor();
+    const returned = new URL(page.url());
+    assert.equal(returned.origin + returned.pathname, callback);
+    assert.equal(returned.searchParams.get("iss"), origin);
+    assert.equal(returned.searchParams.get("state"), params.get("state"));
+    return returned.searchParams;
+  }
+
+  await page.goto(origin + "/oauth/authorize?" + params);
+  await page.getByLabel("Email address").fill(email);
+  await submit("Email me a code", "/login/request", 200);
+  const db = await runtime.mf.getD1Database("DB");
+  const captured = await db.prepare(
+    "SELECT json_extract(body,'$.text') AS message FROM newsman_records WHERE kind='capture' AND json_extract(body,'$.to')=?"
+  ).bind(email).first("message");
+  await page.getByLabel("Email code").fill(captured.match(/\b\d{8}\b/)[0]);
+  await submit("Sign in", "/login/verify", 303);
+  const approved = await decide("Allow");
+  assert.ok(approved.get("code"));
+  const exchanged = await fetch(origin + "/oauth/token", {
+    method: "POST",
+    body: new URLSearchParams({
+      grant_type: "authorization_code", client_id: clientId, redirect_uri: callback,
+      code: approved.get("code"), code_verifier: verifier, resource,
+    }),
+  });
+  assert.equal(exchanged.status, 200);
+  const { access_token } = await exchanged.json();
+  const client = new Client({ name: "browser-test", version: "1" });
+  t.after(() => client.close());
+  await client.connect(new StreamableHTTPClientTransport(new URL(resource), {
+    requestInit: { headers: { Authorization: "Bearer " + access_token } },
+  }));
+  const issues = await client.callTool({ name: "issues_list", arguments: {} });
+  assert.equal(issues.isError ?? false, false);
+  assert.deepEqual(JSON.parse(issues.content[0].text).items, []);
+
+  params.set("state", "denial-check");
+  await page.goto(origin + "/oauth/authorize?" + params);
+  const denied = await decide("Deny");
+  assert.equal(denied.get("error"), "access_denied");
+  assert.equal(denied.has("code"), false);
+  await page.goto(origin);
+  await submit("Sign out", "/login/logout", 303);
+  await page.getByRole("button", { name: "Email me a code" }).waitFor();
+  assert.equal((await page.request.get(origin + "/api/session")).status(), 401);
+});
 
 test(
   "operator console uses the Worker for editing, audience, transfers and MCP tools",
@@ -87,13 +179,12 @@ test(
       .waitFor();
     await page.getByRole("button", { name: "Close", exact: true }).click();
 
-    const signup = await fetch(base + "/api/newsletter/subscribe", {
-      method: "POST",
-      redirect: "manual",
-      headers: { Origin: base },
-      body: new URLSearchParams({ email: "reader@example.test" }),
-    });
-    assert.equal(signup.status, 303);
+    await page.goto(base + "/subscribe/");
+    await page.getByLabel("Email address").fill("reader@example.test");
+    const signup = page.waitForResponse(response =>
+      response.url() === base + "/api/newsletter/subscribe" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Subscribe", exact: true }).click();
+    assert.equal((await signup).status(), 303);
     await open("audience", "#filter-form");
     await page
       .getByRole("textbox", { name: "Search subscribers" })

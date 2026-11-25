@@ -366,7 +366,7 @@ test('an import and a complete private export can move between web and MCP', asy
   assert.equal(privateFile.isError, true);
 });
 
-test('email operators authenticate both MCP resources and admit only pilot mail', async t => {
+test('email operators authenticate both MCP resources and delivery respects the recipient allowlist', async t => {
   const emails = ['first@publisher.test', 'second@publisher.test'];
   const { mf, origin } = await workspace(t, {
     OPERATOR_AUTH_MODE: 'email', OPERATOR_EMAILS: emails.join(','), PILOT_RECIPIENTS: emails.join(','),
@@ -379,6 +379,12 @@ test('email operators authenticate both MCP resources and admit only pilot mail'
   const root = await fetch(origin+'/',{redirect:'manual'});
   assert.equal(root.status,303);
   assert.match(root.headers.get('location'),/^\/login/);
+  for (const headers of [{}, {Origin:'null'}, {Origin:'https://another.example.test'}]) {
+    const rejected = await fetch(origin+'/login/request', {
+      method:'POST', headers, body:new URLSearchParams({email:emails[0]}),
+    });
+    assert.equal((await json(rejected,403)).error.code,'invalid_origin');
+  }
   const unknown='excluded@publisher.test';
   await form(origin,'/login/request',{email:unknown});
   await form(origin,'/api/newsletter/subscribe',{email:unknown});

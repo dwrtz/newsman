@@ -163,14 +163,17 @@ async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Respon
         scopes = esc(&scopes.join(", ")),
         callback = esc(callback)
     );
+    let callback_origin = Url::parse(callback)
+        .map_err(|_| config_error())?
+        .origin()
+        .ascii_serialization();
     let mut res = Response::from_html(page)?;
     res.headers_mut().set("Cache-Control", "no-store")?;
     res.headers_mut().set(
         "Content-Security-Policy",
-        "default-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
+        &format!("default-src 'none'; frame-ancestors 'none'; form-action 'self' {callback_origin}; base-uri 'none'"),
     )?;
-    res.headers_mut().set("Referrer-Policy", "no-referrer")?;
-    Ok(res)
+    crate::form_with_origin(res)
 }
 async fn decision(
     req: &Request,

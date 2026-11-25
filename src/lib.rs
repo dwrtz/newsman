@@ -184,6 +184,14 @@ async fn invoke(
 fn error_response(err: AppError) -> worker::Result<Response> {
     Ok(Response::from_json(&json!({"error":{"code":err.code,"message":err.message,"retryable":err.status>=500||err.status==429}}))?.with_status(err.status))
 }
+
+fn form_with_origin(response: Response) -> Res<Response> {
+    let headers = response.headers().clone();
+    // Native form submissions need an Origin for CSRF checks. Only disclose the origin.
+    headers.set("Referrer-Policy", "strict-origin")?;
+    Ok(response.with_headers(headers))
+}
+
 async fn route(mut req: Request, env: &Env) -> Res<Response> {
     let url = req.url()?;
     let path = url.path();
@@ -292,7 +300,11 @@ async fn route(mut req: Request, env: &Env) -> Res<Response> {
         return Ok(Response::error("Method not allowed", 405)?);
     }
     // Static code contains no account data. The API independently authorizes every read and write.
-    Ok(env.assets("ASSETS")?.fetch_request(req).await?)
+    let response = env.assets("ASSETS")?.fetch_request(req).await?;
+    if email_login::enabled(env) && matches!(path, "/" | "/index.html") {
+        return form_with_origin(response);
+    }
+    Ok(response)
 }
 
 #[event(fetch)]
@@ -306,9 +318,11 @@ pub async fn fetch(req: Request, env: Env, _: Context) -> worker::Result<Respons
     response
         .headers_mut()
         .set("X-Content-Type-Options", "nosniff")?;
-    response
-        .headers_mut()
-        .set("Referrer-Policy", "no-referrer")?;
+    if response.headers().get("Referrer-Policy")?.is_none() {
+        response
+            .headers_mut()
+            .set("Referrer-Policy", "no-referrer")?;
+    }
     if response.headers().get("Cache-Control")?.is_none() {
         response.headers_mut().set("Cache-Control", "no-store")?;
     }
