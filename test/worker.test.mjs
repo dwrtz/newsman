@@ -366,7 +366,7 @@ test('an import and a complete private export can move between web and MCP', asy
   assert.equal(privateFile.isError, true);
 });
 
-test('email operators authenticate both MCP resources and admit only pilot mail', async t => {
+test('email operators authenticate both MCP resources and delivery respects the recipient allowlist', async t => {
   const emails = ['first@publisher.test', 'second@publisher.test'];
   const { mf, origin } = await workspace(t, {
     OPERATOR_AUTH_MODE: 'email', OPERATOR_EMAILS: emails.join(','), PILOT_RECIPIENTS: emails.join(','),
