@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { startRuntime, webClient } from '../scripts/runtime.mjs';
 
@@ -19,6 +20,30 @@ async function captures(db) {
   return (await db.prepare("SELECT body FROM newsman_records WHERE kind='capture'").all())
     .results.map(row => JSON.parse(row.body));
 }
+
+test('SNS can redeliver a signed notification after database contention', async t => {
+  const certificate = await readFile(new URL('./fixtures/sns-certificate.pem', import.meta.url), 'utf8');
+  const notice = JSON.parse(await readFile(new URL('./fixtures/sns-notification.json', import.meta.url), 'utf8'));
+  const runtime = await startRuntime({
+    bindings: {AWS_REGION:'us-west-2', SES_CONFIGURATION_SET:'newsman', SNS_TOPIC_ARN:notice.TopicArn},
+    outboundService: request => new Response(request.url === notice.SigningCertURL ? certificate : null,
+      {status: request.url === notice.SigningCertURL ? 200 : 404}),
+  });
+  t.after(() => runtime.close());
+  const db = await runtime.mf.getD1Database('DB');
+  const deliver = () => fetch(runtime.origin+'/webhooks/ses', {method:'POST', body:JSON.stringify(notice)});
+  const countReceipts = () => db.prepare("SELECT COUNT(*) AS n FROM newsman_records WHERE kind='provider_receipt'").first('n');
+  // Force the same SQLite error D1 returns when a competing writer advances the revision.
+  await db.prepare(`CREATE TRIGGER competing_write BEFORE UPDATE OF revision ON newsman_state BEGIN
+    SELECT RAISE(ABORT, 'CHECK constraint failed: revision >= 0'); END`).run();
+  assert.equal((await deliver()).status, 503);
+  assert.equal(await countReceipts(), 0);
+  await db.prepare('DROP TRIGGER competing_write').run();
+  const replays = await Promise.all([deliver(), deliver(), deliver()]);
+  assert.deepEqual(replays.map(response => response.status), [200, 200, 200]);
+  assert.equal(await countReceipts(), 1);
+  assert.equal(await db.prepare('SELECT revision FROM newsman_state WHERE id=1').first('revision'), 1);
+});
 
 test('an interrupted submission stays unknown across scheduler retries and has an auditable resolution', async t => {
   const runtime = await startRuntime();

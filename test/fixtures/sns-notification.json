@@ -1,0 +1,10 @@
+{
+  "Message": "{}",
+  "MessageId": "synthetic-notification",
+  "TopicArn": "arn:aws:sns:us-west-2:000000000000:newsman",
+  "Type": "Notification",
+  "SignatureVersion": "2",
+  "Timestamp": "2026-11-24T22:07:52Z",
+  "Signature": "0hktBI5uDunwTIqzVts9u8Pq0G/EMYUf8gPJVUBcg4x95yOJm0PJm3Xv2vrJgx+cMvdnnQbYMjZwHvNaQ2d3Oyagda2WPSR5XA7WupWjBUWs5KUQpKZh2jAVM75gBUG3bXi5VhiZlB1TmIrr8o6bn2k+JS+ebMzB0Rtx0i0YNLuIVlhdkokn/FtsNS2QZqWWbn9ZuGUTC2fumflaDrExOeIcbooKSE1TeWyhyjmCKOougTQ2OWnTCmXMaZ7flGzjI1nfH6czoh2OW8qUa6YG/EzZ0KXlKKhuYiRIcGk+KT2y3/8NUzxByKlZ1O53wHGeTu2k89bweB6KgZL/6YRNIQ==",
+  "SigningCertURL": "https://sns.us-west-2.amazonaws.com/SimpleNotificationService-00000000000000000000.pem"
+}

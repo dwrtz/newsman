@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -137,6 +137,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.3.1",
+      "date": "2026-11-25",
+      "note": "Concurrent signed SES notifications retry their database writes. Persistent contention returns HTTP 503 so SNS can redeliver pending feedback."
+    },
     {
       "version": "0.3.0",
       "date": "2026-11-25",

@@ -33,6 +33,7 @@ Use one optional source bundle with an explicitly supplied canonical URL and rel
 | Opt-out after scheduling, before provider submission | The final send boundary excludes that recipient. |
 | Opt-out after the provider boundary | The prior submission may finish. Subsequent submissions are blocked. |
 | Duplicate or reordered SNS events | The report is stable and an old delivery cannot reverse a complaint or permanent bounce. |
+| Signed SNS notification contends with another database write | Retry locally. Persistent contention returns HTTP 503. Redelivering the same message after recovery commits a single receipt and applies the feedback once. |
 | Invalid signature or unexpected topic | Delivery and consent state are unchanged. |
 | Import replay or rollback | The reviewed eligible set and all new opt-outs survive. See the seven-identity fixture in [migration.md](migration.md). |
 
