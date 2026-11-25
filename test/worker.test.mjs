@@ -25,9 +25,9 @@ async function json(response, status = 200) {
   return JSON.parse(body);
 }
 
-function form(origin, path, data) {
+function form(origin, path, data, cookie = "") {
   return fetch(new URL(path, origin), {
-    method: 'POST', redirect: 'manual', headers: { Origin: origin },
+    method: 'POST', redirect: 'manual', headers: { Origin: origin, Cookie: cookie },
     body: new URLSearchParams(data),
   });
 }
@@ -42,16 +42,16 @@ async function webSession(origin) {
   });
 }
 
-async function authorizationCode(origin, scope) {
+async function authorizationCode(origin, scope, cookie = "", path = "/mcp") {
   const verifier = randomBytes(48).toString('base64url');
   const state = randomBytes(16).toString('hex');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
-  const resource = origin + '/mcp';
+  const resource = origin + path;
   const params = {
     client_id: clientId, redirect_uri: callback, response_type: 'code', state,
     resource, scope, code_challenge: challenge, code_challenge_method: 'S256',
   };
-  const page = await fetch(origin + '/oauth/authorize?' + new URLSearchParams(params));
+  const page = await fetch(origin + '/oauth/authorize?' + new URLSearchParams(params), {headers:{Cookie:cookie}});
   const html = await page.text();
   assert.equal(page.status, 200, html.slice(0, 300));
   const field = name => {
@@ -61,7 +61,7 @@ async function authorizationCode(origin, scope) {
   };
   const consent = await form(origin, '/oauth/authorize', {
     decision: 'approve', handle: field('handle'), csrf: field('csrf'),
-  });
+  },cookie);
   assert.equal(consent.status, 303);
   const result = new URL(consent.headers.get('location'));
   assert.equal(result.origin + result.pathname, callback);
@@ -358,4 +358,53 @@ test('an import and a complete private export can move between web and MCP', asy
   const readOnly = await mcp(t, origin, (await token(origin, 'read')).access_token);
   const privateFile = await readOnly.callTool({ name: 'file_read', arguments: { id: finished.result_asset_id, offset: 0 } });
   assert.equal(privateFile.isError, true);
+});
+
+test('email operators authenticate both MCP resources and admit only pilot mail', async t => {
+  const emails = ['first@publisher.test', 'second@publisher.test'];
+  const { mf, origin } = await workspace(t, {
+    OPERATOR_AUTH_MODE: 'email', OPERATOR_EMAILS: emails.join(','), PILOT_RECIPIENTS: emails.join(','),
+    NEWSMAN_SECRET: randomBytes(40).toString('hex'),
+  });
+  const db = await mf.getD1Database('DB');
+  for (const path of ['/mcp','/reader/mcp']) {
+    assert.equal((await fetch(origin+path)).status,401);
+  }
+  const root = await fetch(origin+'/',{redirect:'manual'});
+  assert.equal(root.status,303);
+  assert.match(root.headers.get('location'),/^\/login/);
+  const unknown='excluded@publisher.test';
+  await form(origin,'/login/request',{email:unknown});
+  await form(origin,'/api/newsletter/subscribe',{email:unknown});
+  const n=await db.prepare("SELECT count(*) AS n FROM newsman_records WHERE kind IN ('login_challenge','capture','subscriber','mail_queue')").first('n');
+  assert.equal(n,0);
+  for(const email of emails){
+    const sent=await form(origin,'/login/request',{email});
+    assert.equal(sent.status,200);
+    const pending=sent.headers.getSetCookie()[0].split(';')[0];
+    const row=await db.prepare("SELECT json_extract(body,'$.text') AS body FROM newsman_records WHERE kind='capture' AND json_extract(body,'$.to')=?").bind(email).first();
+    const code=row.body.match(/\b\d{8}\b/)[0];
+    assert.equal((await form(origin,'/login/request',{email},pending)).headers.getSetCookie().length,0);
+    assert.equal((await form(origin,'/login/verify',{code})).status,401);
+    const signed=await form(origin,'/login/verify',{code},pending);
+    assert.equal(signed.status,303);
+    const session=signed.headers.getSetCookie().find(v=>v.startsWith('__Host-newsman-session=')).split(';')[0];
+    assert.equal((await form(origin,'/login/verify',{code},pending)).status,401);
+    const actor=await json(await fetch(origin+'/api/session',{headers:{Cookie:session}}));
+    assert.equal(actor.email,email);
+    const denied=await fetch(origin+'/api/ops/operators_add',{method:'POST',headers:{'Content-Type':'application/json',Cookie:session,Origin:origin,'X-CSRF-Token':actor.csrf},body:JSON.stringify({key:'invite-outside-'+email,email:unknown})});
+    assert.equal(denied.status,403);
+    const credentials={};
+    for(const path of ['/mcp','/reader/mcp']){
+      const grant=await authorizationCode(origin,'read',session,path);
+      credentials[path]=(await json(await form(origin,'/oauth/token',grant))).access_token;
+      const client=await mcp(t,origin,credentials[path],path);
+      const tools=await toolsFor(client);
+      assert.ok(tools.some(tool=>tool.name===(path==='/mcp'?'dashboard_get':'reader_info')));
+      const other=path==='/mcp'?'/reader/mcp':'/mcp';
+      assert.equal((await fetch(origin+other,{headers:{Authorization:'Bearer '+credentials[path]}})).status,401);
+    }
+    await form(origin,'/login/logout',{},session);
+    assert.equal((await fetch(origin+'/api/session',{headers:{Cookie:session}})).status,401);
+  }
 });

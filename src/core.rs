@@ -98,9 +98,14 @@ pub fn conf(env: &Env, key: &str) -> Option<String> {
 }
 pub fn local(env: &Env) -> bool {
     conf(env, "NEWSMAN_LOCAL").as_deref() == Some("yes")
-        && ["ACCESS_AUD", "ACCESS_TEAM_DOMAIN", "AWS_ACCESS_KEY_ID"]
-            .iter()
-            .all(|k| conf(env, k).is_none())
+        && [
+            "ACCESS_AUD",
+            "ACCESS_TEAM_DOMAIN",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_ROLE_ARN",
+        ]
+        .iter()
+        .all(|k| conf(env, k).is_none())
 }
 pub fn req_str<'a>(v: &'a Value, k: &str) -> Res<&'a str> {
     v.get(k)

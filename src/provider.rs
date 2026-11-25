@@ -66,6 +66,7 @@ pub fn classify_response(status: u16, body: &str) -> Submission {
     }
 }
 
+#[derive(Clone)]
 pub struct Credentials {
     pub access_key: String,
     pub secret_key: String,
@@ -82,7 +83,7 @@ fn hmac(key: &[u8], input: &str) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-fn regional_host(region: &str, service: &str) -> Option<String> {
+pub(crate) fn regional_host(region: &str, service: &str) -> Option<String> {
     if region.is_empty()
         || region.len() > 32
         || !region
@@ -353,14 +354,14 @@ pub fn configuration(env: &Env) -> Res<()> {
     if local(env) {
         return Ok(());
     }
-    for key in [
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_REGION",
-        "SES_CONFIGURATION_SET",
-        "SNS_TOPIC_ARN",
-    ] {
+    for key in ["AWS_REGION", "SES_CONFIGURATION_SET", "SNS_TOPIC_ARN"] {
         required(env, key)?;
+    }
+    if conf(env, "AWS_ROLE_ARN").is_some() {
+        required(env, "AWS_WORKLOAD_KEY")?;
+    } else {
+        required(env, "AWS_ACCESS_KEY_ID")?;
+        required(env, "AWS_SECRET_ACCESS_KEY")?;
     }
     let region = required(env, "AWS_REGION")?;
     if regional_host(&region, "email").is_none() {
@@ -380,10 +381,14 @@ async fn aws(
     let region = required(env, "AWS_REGION")?;
     let host = regional_host(&region, if service == "ses" { "email" } else { service })
         .ok_or_else(|| AppError::invalid("Invalid AWS region"))?;
-    let credentials = Credentials {
-        access_key: required(env, "AWS_ACCESS_KEY_ID")?,
-        secret_key: required(env, "AWS_SECRET_ACCESS_KEY")?,
-        session_token: conf(env, "AWS_SESSION_TOKEN"),
+    let credentials = if let Some(role) = conf(env, "AWS_ROLE_ARN") {
+        crate::workload::credentials(env, &role, &region).await?
+    } else {
+        Credentials {
+            access_key: required(env, "AWS_ACCESS_KEY_ID")?,
+            secret_key: required(env, "AWS_SECRET_ACCESS_KEY")?,
+            session_token: conf(env, "AWS_SESSION_TOKEN"),
+        }
     };
     let date = DateTime::parse_from_rfc3339(&now())
         .map_err(|_| AppError::invalid("Invalid clock"))?
@@ -418,6 +423,9 @@ async fn aws(
 }
 
 pub async fn submit(env: &Env, mail: &Mail) -> Submission {
+    if !crate::email_login::pilot_permitted(env, &mail.to) {
+        return Submission::Rejected;
+    }
     let Ok(config) = required(env, "SES_CONFIGURATION_SET") else {
         return Submission::Rejected;
     };

@@ -469,6 +469,7 @@ fn row_disposition(row: &Value, kind: &str, beehiiv: bool) -> (&'static str, &'s
     }
     if ["unsubscribed", "inactive_unsubscribed", "opted_out"].contains(&status.as_str())
         || reason == "reader_opt_out"
+        || (beehiiv && clean_time(field(row, &["unsubscribed_on", "unsubscribed_at"])).is_some())
     {
         return ("unsubscribed", "reader_opt_out");
     }
@@ -568,7 +569,12 @@ fn mapped_row(row: &Value, kind: &str, beehiiv: bool) -> Res<Value> {
     for (key, aliases) in [
         (
             "created_at",
-            &["created_at", "subscription_created_at", "subscribed_at"][..],
+            &[
+                "created_at",
+                "subscription_created_at",
+                "subscribed_at",
+                "subscribed_on",
+            ][..],
         ),
         (
             "confirmed_at",
@@ -1412,6 +1418,15 @@ mod tests {
     use super::*;
     #[test]
     fn portable_consent() {
+        assert_eq!(
+            row_disposition(
+                &json!({"status":"inactive","unsubscribed_on":"2026-11-24T08:00:00Z"}),
+                "audience_import",
+                true
+            ),
+            ("unsubscribed", "reader_opt_out")
+        );
+
         assert_eq!(
             row_disposition(&json!({"status":"active"}), "audience_import", false).0,
             "held"

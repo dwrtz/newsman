@@ -108,9 +108,22 @@ fn dated(ts: i64) -> String {
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
+fn allowed_resource(env: &Env, canonical: &str, requested: &str) -> bool {
+    requested == format!("{canonical}/mcp")
+        || (crate::email_login::enabled(env) && requested == format!("{canonical}/reader/mcp"))
+}
 async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Response> {
-    let actor = super::web_actor(req, env).await?;
     let u = req.url()?;
+    let actor = match super::web_actor(req, env).await {
+        Err(e) if e.status == 401 && crate::email_login::enabled(env) => {
+            return crate::email_login::signin_redirect(&format!(
+                "{}?{}",
+                u.path(),
+                u.query().unwrap_or_default()
+            ));
+        }
+        result => result?,
+    };
     let Ok(f) = form_fields(u.query().unwrap_or_default().as_bytes()) else {
         return oauth_error("invalid_request", "Duplicate parameter");
     };
@@ -120,9 +133,9 @@ async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Respon
     if !registered(env, req, client, callback)? {
         return oauth_error("invalid_client", "Unknown client or callback");
     }
-    let resource = format!("{canonical}/mcp");
+    let resource = text(&f, "resource");
     if text(&f, "response_type") != "code"
-        || text(&f, "resource") != resource
+        || !allowed_resource(env, canonical, resource)
         || text(&f, "code_challenge_method") != "S256"
         || !valid_challenge(text(&f, "code_challenge"))
         || state.len() > 1024
@@ -135,6 +148,12 @@ async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Respon
     let Some(scopes) = parse_scopes(f.get("scope").map(String::as_str).unwrap_or("read")) else {
         return oauth_error("invalid_scope", "Unknown or empty scope");
     };
+    if resource.ends_with("/reader/mcp")
+        && (!scopes.iter().any(|s| s == "read")
+            || scopes.iter().any(|s| s != "read" && s != "offline_access"))
+    {
+        return oauth_error("invalid_scope", "Reader MCP requires read access");
+    }
     let handle = random()?;
     let id = sha256(handle.as_bytes());
     let mut tx = Tx::begin(env, actor.clone()).await?;
@@ -239,11 +258,11 @@ async fn token(
 ) -> Res<Response> {
     let mode = text(f, "grant_type");
     let client = text(f, "client_id");
-    let resource = format!("{canonical}/mcp");
+    let resource = text(f, "resource");
     if client.is_empty() {
         return oauth_error("invalid_client", "Missing registered client identifier");
     }
-    if text(f, "resource") != resource {
+    if !allowed_resource(env, canonical, resource) {
         return oauth_error("invalid_target", "Supply the canonical MCP resource");
     }
     let (kind, key) = match mode {
@@ -287,7 +306,7 @@ async fn token(
         || tx
             .get("operator", req_str(&grant, "operator_id")?)
             .await?
-            .is_none_or(|v| v["state"] != "active")
+            .is_none_or(|v| !active_operator(env, &v))
     {
         return oauth_error("invalid_grant", "Invalid or expired grant");
     }
@@ -390,6 +409,14 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
                 return as_json(
                     200,
                     &json!({"resource":resource,"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":SCOPES}),
+                );
+            }
+            "/.well-known/oauth-protected-resource/reader/mcp"
+                if crate::email_login::enabled(env) =>
+            {
+                return as_json(
+                    200,
+                    &json!({"resource":format!("{canonical}/reader/mcp"),"authorization_servers":[canonical],"bearer_methods_supported":["header"],"scopes_supported":["read"]}),
                 );
             }
             "/.well-known/oauth-authorization-server" => {

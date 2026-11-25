@@ -8,7 +8,7 @@ Run the Rust Worker and data stores in the operator’s Cloudflare account, usin
 
 ## R1. Install one independent workspace
 
-One installation owns its messages, audience, operators, credentials and records. Bootstrap a single allowlisted operator or a small team of named operators. Collect a display name, sender identity, monitored reply address, footer, time zone and public HTTPS origin. newsman can serve its own recipient signup and consent pages. Operators can also link to those pages from an existing site. An installation can begin empty.
+One installation owns its messages, audience, operators, credentials and records. Bootstrap a single allowlisted operator or a small team of named operators. A publisher can use verified email codes for browser sign-in and authorize both MCP resources exclusively for these operators. Keep the recipient-facing consent pages available to holders of their own proofs. Collect a display name, sender identity, monitored reply address, footer, time zone and public HTTPS origin. newsman can serve its own recipient signup and consent pages. Operators can also link to those pages from an existing site. An installation can begin empty.
 
 **Accept when** the operator can create and preview a draft in a clean installation, see which delivery prerequisites remain, and connect a remote MCP client. An empty allowlist closes operator access.
 

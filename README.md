@@ -30,7 +30,7 @@ For example, a remote assistant can create a draft with `issue_create`, inspect 
 
 ## Host your own instance
 
-The Rust application compiles to WebAssembly. Cloudflare serves its HTML, CSS and JavaScript console, stores application records in D1 and private files in R2, and runs background delivery and import work. Each deployment has its own verified identities, audience and sender configuration. [Deployment and SES setup](docs/self-host.md) · [Import and migration](spec/migration.md)
+The Rust application compiles to WebAssembly. Cloudflare serves its HTML, CSS and JavaScript console, stores application records in D1 and private files in R2, and runs background delivery and import work. Operators can use verified inbox codes or Cloudflare Access. In the email-code profile, both MCP endpoints require a grant from an approved operator. Each deployment has its own verified identities, audience and sender configuration. [Deployment and SES setup](docs/self-host.md) · [Import and migration](spec/migration.md)
 
 ## Verify the build
 

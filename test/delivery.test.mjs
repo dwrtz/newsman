@@ -108,3 +108,27 @@ test('erasing a pending confirmation does not block later outbox jobs', async t 
   const orphan=await db.prepare("SELECT body FROM newsman_records WHERE kind='attempt' AND id='attempt_orphan'").first();
   assert.equal(JSON.parse(orphan.body).state,'skipped');
 });
+
+test('a proof for a confirmed seed includes a working one-click unsubscribe while campaigns are paused', async t => {
+  const {origin,mf,close}=await startRuntime();
+  t.after(close);
+  const db=await mf.getD1Database('DB'), call=await webClient(origin);
+  const email='seed@publisher.test';
+  const saved=await call('settings_get');
+  await command(call,'settings_update',{expected_version:saved.version,settings:{...saved.settings,test_recipients:[email],postal_footer:'Publisher test footer'}});
+  await fetch(origin+'/api/newsletter/subscribe',{method:'POST',headers:{Origin:origin},body:new URLSearchParams({email})});
+  await wake(mf);
+  const [confirmation]=await captures(db);
+  const link=confirmation.text.match(/https?:\/\/[^\s]+\/confirm\/[^\s]+/)[0];
+  assert.equal((await fetch(link,{method:'POST',redirect:'manual'})).status,303);
+  const issue=await command(call,'issue_create',{draft:{title:'Seed',subject:'Controlled proof',preheader:'',html:'<p>Seed</p>',plain_text:'Seed'}});
+  await command(call,'send_test',{issue_id:issue.id,issue_version:issue.version,recipient:email});
+  await wake(mf);
+  const message=(await captures(db)).find(row=>row.subject==='[Test] Controlled proof');
+  assert.ok(message.unsubscribe);
+  assert.ok(message.html.includes(message.unsubscribe) && message.text.includes(message.unsubscribe));
+  assert.equal((await fetch(message.unsubscribe,{method:'POST',body:new URLSearchParams({'List-Unsubscribe':'One-Click'})})).status,200);
+  const status=await db.prepare("SELECT json_extract(body,'$.status') AS status FROM newsman_records WHERE kind='subscriber' AND json_extract(body,'$.email')=?").bind(email).first('status');
+  assert.equal(status,'unsubscribed');
+  assert.equal((await call('health_get')).paused,true);
+});

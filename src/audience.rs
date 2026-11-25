@@ -348,6 +348,9 @@ fn check_inbox() -> Value {
 async fn signup(tx: &mut Tx<'_>, a: &Value, resend: bool) -> Res<Value> {
     let email = email_key(req_str(a, "email")?)
         .ok_or_else(|| AppError::invalid("A valid email address is required"))?;
+    if !crate::email_login::pilot_permitted(tx.env, &email) {
+        return Ok(check_inbox());
+    }
     let entry = lookup(tx, &email).await?;
     if resend && entry.is_none() {
         return Ok(check_inbox());

@@ -20,10 +20,10 @@ mod oauth;
 pub use oauth::http;
 pub const SCOPES: [&str; 4] = ["read", "write", "send", "admin"];
 
-fn unauth() -> AppError {
+pub(crate) fn unauth() -> AppError {
     AppError::new("unauthorized", "Operator authentication required", 401)
 }
-fn denied() -> AppError {
+pub(crate) fn denied() -> AppError {
     AppError::new(
         "permission_denied",
         "Operator access is unavailable for this identity",
@@ -37,7 +37,7 @@ fn config_error() -> AppError {
         503,
     )
 }
-fn seconds() -> i64 {
+pub(crate) fn seconds() -> i64 {
     chrono::Utc::now().timestamp()
 }
 fn strings(v: &Value) -> Vec<String> {
@@ -84,10 +84,10 @@ pub fn origin(req: &Request, env: &Env) -> Res<String> {
 }
 
 #[derive(Clone, Debug)]
-struct Verified {
-    issuer: String,
-    sub: String,
-    email: String,
+pub(crate) struct Verified {
+    pub(crate) issuer: String,
+    pub(crate) sub: String,
+    pub(crate) email: String,
 }
 fn team_issuer(raw: &str) -> Res<String> {
     let v = raw.trim_end_matches('/');
@@ -237,7 +237,12 @@ async fn bootstrap(env: &Env, verified: &Verified) -> Res<()> {
     if tx.get("access_setup", "bootstrap").await?.is_some() {
         return Ok(());
     }
-    let raw = conf(env, "BOOTSTRAP_OPERATORS").unwrap_or_default();
+    let variable = if crate::email_login::enabled(env) {
+        "OPERATOR_EMAILS"
+    } else {
+        "BOOTSTRAP_OPERATORS"
+    };
+    let raw = conf(env, variable).unwrap_or_default();
     let mut emails = std::collections::BTreeSet::new();
     for email in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         emails.insert(normalized_email(email)?);
@@ -255,7 +260,10 @@ async fn bootstrap(env: &Env, verified: &Verified) -> Res<()> {
     tx.put("access_setup", "bootstrap", json!({"id":"bootstrap"}))?;
     tx.commit().await
 }
-async fn resolve_identity(env: &Env, verified: &Verified) -> Res<Actor> {
+pub(crate) async fn resolve_identity(env: &Env, verified: &Verified) -> Res<Actor> {
+    if !crate::email_login::permitted(env, &verified.email) {
+        return Err(denied());
+    }
     bootstrap(env, verified).await?;
     let mut tx = Tx::begin(env, Actor::system()).await?;
     let members = tx.list("operator").await?;
@@ -284,6 +292,11 @@ async fn resolve_identity(env: &Env, verified: &Verified) -> Res<Actor> {
     })
 }
 pub async fn web_actor(req: &Request, env: &Env) -> Res<Actor> {
+    match conf(env, "OPERATOR_AUTH_MODE").as_deref() {
+        Some("email") => return crate::email_login::actor(req, env).await,
+        None | Some("access") => (),
+        _ => return Err(config_error()),
+    }
     let identity = access_identity(req, env).await?;
     for retry in 0..4 {
         match resolve_identity(env, &identity).await {
@@ -300,10 +313,13 @@ pub fn csrf(req: &Request, env: &Env, actor: &Actor) -> Res<String> {
         .filter(|s| s.len() >= 32)
         .or_else(|| local_mode.then(|| "newsman-loopback-only-local-session".to_string()))
         .ok_or_else(config_error)?;
-    let assertion = req
-        .headers()
-        .get("Cf-Access-Jwt-Assertion")?
-        .unwrap_or_default();
+    let assertion = if crate::email_login::enabled(env) {
+        crate::email_login::cookie(req, "__Host-newsman-session").ok_or_else(unauth)?
+    } else {
+        req.headers()
+            .get("Cf-Access-Jwt-Assertion")?
+            .unwrap_or_default()
+    };
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(secret.as_bytes()).map_err(|_| config_error())?;
     for s in [
@@ -318,6 +334,12 @@ pub fn csrf(req: &Request, env: &Env, actor: &Actor) -> Res<String> {
     Ok(B64.encode(mac.finalize().into_bytes()))
 }
 
+pub(crate) fn active_operator(env: &Env, op: &Value) -> bool {
+    op["state"] == "active"
+        && op["email"]
+            .as_str()
+            .is_some_and(|email| crate::email_login::permitted(env, email))
+}
 pub async fn revalidate(tx: &Tx<'_>) -> Res<()> {
     if tx.actor.id == Actor::reader().id || tx.actor.id == Actor::system().id {
         return Ok(());
@@ -325,7 +347,7 @@ pub async fn revalidate(tx: &Tx<'_>) -> Res<()> {
     let op = tx
         .get("operator", &tx.actor.id)
         .await?
-        .filter(|v| v["state"] == "active")
+        .filter(|v| active_operator(tx.env, v))
         .ok_or_else(denied)?;
     if let Some(id) = &tx.actor.grant_id {
         let grant = tx
@@ -357,7 +379,7 @@ pub async fn bearer(req: &Request, env: &Env) -> Res<Actor> {
         .get("access_token", &sha256(token.as_bytes()))
         .await?
         .ok_or_else(unauth)?;
-    if token["resource"] != format!("{canonical}/mcp")
+    if token["resource"] != format!("{canonical}{}", req.path())
         || token["expires_s"].as_i64().is_none_or(|t| t <= seconds())
     {
         return Err(unauth());
@@ -374,7 +396,7 @@ pub async fn bearer(req: &Request, env: &Env) -> Res<Actor> {
     let member = tx
         .get("operator", req_str(&grant, "operator_id")?)
         .await?
-        .filter(|m| m["state"] == "active")
+        .filter(|m| active_operator(env, m))
         .ok_or_else(unauth)?;
     Ok(Actor {
         id: req_str(&member, "id")?.into(),
@@ -391,7 +413,7 @@ pub async fn cleanup(env: &Env) -> Res<()> {
         return Ok(());
     }
     env.d1("DB")?.prepare(
-        "DELETE FROM newsman_records WHERE (kind,id) IN (SELECT kind,id FROM newsman_records WHERE kind IN ('access_token','oauth_refresh','oauth_code','oauth_consent') AND json_extract(body,'$.expires_s') <= ? LIMIT 500)"
+        "DELETE FROM newsman_records WHERE (kind,id) IN (SELECT kind,id FROM newsman_records WHERE kind IN ('access_token','oauth_refresh','oauth_code','oauth_consent','web_session','login_challenge') AND json_extract(body,'$.expires_s') <= ? LIMIT 500)"
     ).bind(&[wasm_bindgen::JsValue::from_f64(at as f64)])?.run().await?;
     Ok(())
 }

@@ -2,7 +2,13 @@
 
 A newsman installation has one publication. Each address you add to its operator allowlist can run the entire publication. Readers can subscribe without an operator account.
 
-## Configure the deployment
+## Sign in by email
+
+Set `OPERATOR_AUTH_MODE=email`, `OPERATOR_EMAILS` to the exact comma-separated operator addresses, and `PUBLIC_ORIGIN` to the HTTPS Worker origin. Configure the session secret, SES sender and the permitted OAuth client callbacks. The login page sends a one-time code to an approved inbox. Enter it in the requesting browser. Accounts start from the deployment allowlist, and future roster and grant operations remain subject to that list. Restrict access to the settings used for deployment.
+
+In this mode, a client connects to `/mcp` using the normal OAuth code flow. A client for `/reader/mcp` requests a separate grant with scope `read` and the full reader endpoint as its resource. The public web confirmation and unsubscribe pages still accept recipient proofs. The console offers sign-out for the current browser session.
+
+## Configure Cloudflare Access
 
 | Setting | Value |
 | --- | --- |
