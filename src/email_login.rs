@@ -132,7 +132,7 @@ fn page(verify: bool, next: &str, message: &str) -> Res<Response> {
         next = esc(next_path(next))
     ))?;
     r.headers_mut().set("Content-Security-Policy","default-src 'none'; style-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")?;
-    Ok(r)
+    crate::form_with_origin(r)
 }
 fn redirect(path: &str) -> Res<Response> {
     let mut r = Response::empty()?.with_status(303);
@@ -292,10 +292,15 @@ pub async fn http(mut req: Request, env: &Env) -> Res<Response> {
             .unwrap_or_default();
         return page(false, &next, "");
     }
-    if req.method() != Method::Post
-        || req.headers().get("Origin")?.as_deref() != Some(origin.as_str())
-    {
-        return Err(access::denied());
+    if req.method() != Method::Post {
+        return Ok(Response::error("Use POST", 405)?);
+    }
+    if req.headers().get("Origin")?.as_deref() != Some(origin.as_str()) {
+        return Err(AppError::new(
+            "invalid_origin",
+            "Open the Newsman sign-in page and submit the form from there.",
+            403,
+        ));
     }
     let bytes = crate::bounded_body(&mut req, 8192).await?;
     let fields = url::form_urlencoded::parse(&bytes)
