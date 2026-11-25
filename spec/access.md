@@ -6,15 +6,19 @@ One workspace can belong to one person or to a small allowlisted team. All activ
 
 | Entry point | Authority | Action |
 | --- | --- | --- |
-| Browser console and command API | Verified Cloudflare Access identity on the allowlist | Read and change the workspace. A browser mutation includes a matching Origin and CSRF token. |
+| Browser console and command API | Verified email-code session or Cloudflare Access identity on the allowlist | Read and change the workspace. A browser mutation includes a matching Origin and CSRF token. |
 | `/mcp` | OAuth bearer grant bound to this installation’s MCP resource, operator and scopes | Discover and invoke authorized operator tools over HTTPS. |
-| Authorization and consent | Cloudflare Access plus the operator’s explicit grant | Approve a registered client, exact callback, resource and scopes. |
+| Authorization and consent | Authenticated operator session plus the operator’s explicit grant | Approve a registered client, exact callback, resource and scopes. |
 | OAuth metadata, token and revocation endpoints | Issuer discovery or the relevant OAuth credential | Discover the issuer, exchange codes, renew and revoke credentials. Protocol endpoints return machine-readable challenges and errors. |
-| Hosted recipient pages and `/reader/mcp` | Public rate-limited signup or purpose-bound proof | Request confirmation, confirm or unsubscribe. |
+| Hosted recipient pages and `/reader/mcp` | Rate-limited signup or purpose-bound proof. Email-code mode also requires a resource-specific operator grant for reader MCP | Request confirmation, confirm or unsubscribe. |
 
 ## Configure the allowlist
 
-Bootstrap exact verified operator addresses. An empty configuration creates no interactive administrator. Validate the Access application JWT with the configured team’s signing keys, issuer, expected audience and validity window. Bind an eligible verified email to a stable operator identity. An invitation alone cannot authorize commands. The Rust Worker verifies requests under its own authorization rules even if traffic reaches an alternate route. [Cloudflare Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
+In email-code mode, the deployment supplies the exact approved addresses. Send an eight-digit code only to an approved inbox and return the same acknowledgement for an unknown address. Bind the code to its requesting browser, expire it after ten minutes and invalidate it after five unsuccessful attempts or one successful use. Limit new challenges to one per minute and five per hour per address. Keep only a keyed digest of a live code. Use a Secure, HttpOnly, SameSite cookie and a server-side session with a twelve-hour lifetime. Signing out revokes the session. Check the current deployment allowlist when authenticating, admitting a roster member, authorizing commands, exchanging a code and refreshing a grant.
+
+In email-code mode both MCP endpoints require OAuth, including discovery of the tools. A grant to the reader resource has read scope and authorizes reader tools with their existing proof requirements. Each grant names its exact resource. Web signup, confirmation and unsubscribe follow their own consent rules. The deployment may limit pilot signup and all mail to designated test recipients.
+
+For an installation using Cloudflare Access, bootstrap exact verified operator addresses. An empty configuration creates no interactive administrator. Validate the Access application JWT with the configured team’s signing keys, issuer, expected audience and validity window. Bind an eligible verified email to a stable operator identity. An invitation alone cannot authorize commands. The Rust Worker verifies requests under its own authorization rules even if traffic reaches an alternate route. [Cloudflare Access JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 
 Manage membership using `operators_list`, `operators_add` and `operators_remove`. Protect the last bound active operator from concurrent removal. Removal invalidates the operator’s grants. Re-admitting a prior identity starts a fresh membership generation. During operation, check current D1 membership and grant status on every command. Persist active-membership and resource preconditions with the mutation or detect and retry concurrent changes. A storage outage must fail closed.
 

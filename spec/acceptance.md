@@ -8,6 +8,8 @@ The pull choices configure the initial display name (`publication_name`), deploy
 
 Build with the pinned Rust dependency lockfile and Wasm target. Use the generated Worker artifact in an isolated Cloudflare-compatible runtime. Provision the initial operator explicitly and close operator access when none is configured. Exercise both the web and bearer-token paths. Try an unauthorized identity, an expired credential, a mismatched resource, an incorrect redirect URI and a revoked grant. Confirm all four scopes permit the full operator tool set while a read-only grant cannot send. Verify that removing a bound operator invalidates their existing grants.
 
+With the email-code profile, test both approved inboxes and an unlisted address. Check single use, browser binding, logout, and the current allowlist for both MCP resources. Exchange one grant per resource and verify that each works only at its intended endpoint. In a recipient-restricted pilot, a signup outside the test list creates no recipient or confirmation job. Deliver a proof to an eligible seed, inspect its signed one-click headers and exercise its opt-out.
+
 ## Run a one-off send (R2, R3, R4, R5, R6)
 
 1. Start an empty workspace and create a general announcement. Leave the source, archive and feed unset. Use a non-newsletter fixture such as a one-time registration notice and choose the test environment’s configured reply address.

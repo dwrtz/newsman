@@ -55,6 +55,9 @@ pub async fn run(tx: &mut Tx<'_>, name: &str, a: &Value) -> Res<Value> {
         ),
         "operators_add" => {
             let email = normalized_email(req_str(a, "email")?)?;
+            if !crate::email_login::permitted(tx.env, &email) {
+                return Err(crate::access::denied());
+            }
             if let Some(existing) = tx
                 .list("operator")
                 .await?

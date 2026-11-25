@@ -18,7 +18,7 @@ A client with the operator’s full delegated authority can do the whole job ove
 
 ## Connect
 
-Configure the deployment’s canonical HTTPS origin. Connect the client to its `/mcp` endpoint, authorize the requested scopes, initialize, and discover tools with `tools/list`. The server supports MCP version `2025-11-25` with JSON-RPC 2.0 over Streamable HTTP. Requests include the negotiated protocol header and allow JSON and event-stream responses. At the operator endpoint a signed-in bearer grant is required. A missing or invalid credential receives an HTTP challenge carrying the protected-resource metadata URL. The reader endpoint exposes public signup and narrowly scoped actions on proofs received by email. [Authorization and transport](access.md)
+Configure the deployment’s canonical HTTPS origin. Connect the client to its `/mcp` endpoint, authorize the requested scopes, initialize, and discover tools with `tools/list`. The server supports MCP version `2025-11-25` with JSON-RPC 2.0 over Streamable HTTP. Requests include the negotiated protocol header and allow JSON and event-stream responses. At the operator endpoint a signed-in bearer grant is required. A missing or invalid credential receives an HTTP challenge carrying the protected-resource metadata URL. The reader endpoint exposes signup and narrowly scoped actions on proofs received by email. In email-code mode an approved operator must delegate a separate read grant naming the reader endpoint. [Authorization and transport](access.md)
 
 ## Try a send from an MCP client
 

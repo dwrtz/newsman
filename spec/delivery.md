@@ -12,6 +12,10 @@
 
 Deploy each environment separately. The local Worker uses an isolated capture transport, storage and identities. Configure the production origin, allowlisted operators, OAuth clients, verified From domain, monitored Reply-To, postal footer, SES region, configuration set, credentials, feedback topic and sending limits. Previewing a draft requires no AWS access. [Workers bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/) · [SES production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html)
 
+A pilot can restrict recipient addresses at signup, immediately before SES submission and in the AWS sending role. Campaign pause still allows confirmations and approved proofs. A proof to an eligible, explicitly selected seed subscriber carries working one-click headers and a visible opt-out for that subscriber. An ordinary preview to another approved test address carries preview content.
+
+An AWS workload identity can exchange a five-minute signed assertion for temporary role credentials using STS. Publish its issuer metadata and public key at the canonical installation origin. Limit the role trust to the exact issuer, audience and subject. Restrict the role to the sender, configuration set, regional quota and feedback subscription. Keep signing material in Worker secrets.
+
 ## Freeze the message and audience
 
 An operator creates a standalone message or imports a versioned source bundle. Render safe email HTML and a plain-text alternative and include a visible unsubscribe control. Freeze sender, subject, preheader, body, asset references, audience selection, version and digest at commitment. A registered command key and unique plan prevent duplicate campaigns even across adapters. Snapshot the eligible recipients at that cut. A later signup is eligible for a future send. Any subsequent suppression can still stop an outstanding delivery.

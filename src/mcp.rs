@@ -329,11 +329,21 @@ pub async fn http(mut req: Request, env: &Env, reader: bool) -> Res<Response> {
             return Err(AppError::new("permission_denied", "Unexpected Origin", 403));
         }
     }
-    let meta = format!("{origin}/.well-known/oauth-protected-resource/mcp");
-    let actor = if reader {
+    let meta = format!(
+        "{origin}/.well-known/oauth-protected-resource{}",
+        req.path()
+    );
+    let actor = if reader && !crate::email_login::enabled(env) {
         Actor::reader()
     } else {
         match crate::access::bearer(&req, env).await {
+            Ok(actor) if reader && !actor.has("read") => {
+                return Err(AppError::new(
+                    "permission_denied",
+                    "Reader MCP requires read access",
+                    403,
+                ));
+            }
             Ok(actor) => actor,
             Err(e) if e.status == 401 || e.status == 403 => {
                 let mut reply = McpResponse::protocol_error(
@@ -362,6 +372,11 @@ pub async fn http(mut req: Request, env: &Env, reader: bool) -> Res<Response> {
         Vec::new()
     };
     let surface = if reader { "reader" } else { "operator" };
+    let scopes = if reader {
+        Actor::reader().scopes
+    } else {
+        actor.scopes.clone()
+    };
     match receive(
         &method,
         &content_type,
@@ -369,13 +384,13 @@ pub async fn http(mut req: Request, env: &Env, reader: bool) -> Res<Response> {
         version.as_deref(),
         &bytes,
         surface,
-        &actor.scopes,
+        &scopes,
         &meta,
     ) {
         Incoming::Reply(res) => as_http(res),
         Incoming::Invoke(call) => {
             let result=if reader {
-                crate::execute_reader(env,&call.name,call.arguments,&hint).await
+                crate::invoke(env,actor,&call.name,call.arguments,Some(&hint)).await
             } else {
                 crate::execute(env,actor,&call.name,call.arguments).await
             }

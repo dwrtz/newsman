@@ -122,7 +122,7 @@ function sidebar(tab) {
     .map((x) => x.charAt(0).toUpperCase())
     .join("");
   document.getElementById("identity").innerHTML =
-    `<span class="identity-avatar">${e(badge || "O")}</span><div class="identity-label"><strong title="${e(email)}">${e(email)}</strong><small>Operator account</small></div>`;
+    `<span class="identity-avatar">${e(badge || "O")}</span><div class="identity-label"><strong title="${e(email)}">${e(email)}</strong><small>Operator account</small></div>` + (state.session.email_login ? '<form method="post" action="/login/logout"><button class="text-button">Sign out</button></form>' : "");
   document.getElementById("top-right").innerHTML =
     `<a class="text-button" href="${href("connections")}">${icon("plug")} MCP</a>${state.session.local ? '<span class="context-pill"><span class="context-dot"></span>Local instance</span>' : ""}`;
 }

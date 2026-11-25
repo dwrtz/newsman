@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -132,10 +132,16 @@
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
       "READER_PROOF_SECRET",
-      "NEWSMAN_SECRET"
+      "NEWSMAN_SECRET",
+      "AWS_WORKLOAD_KEY"
     ]
   },
   "changelog": [
+    {
+      "version": "0.3.0",
+      "date": "2026-11-25",
+      "note": "Operators can sign in with verified inbox codes. The deployment allowlist applies to both MCP resources. A recipient-restricted pilot supports one-click proofs and short-lived AWS role credentials."
+    },
     {
       "version": "0.2.1",
       "date": "2026-11-25",

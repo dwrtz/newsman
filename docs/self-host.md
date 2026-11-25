@@ -14,7 +14,7 @@ Run the build and test commands in the [README](../README.md) first. A browser a
    done
    ```
 
-4. Add a Cloudflare Access application for the operator web/API and the OAuth consent route on the canonical domain. Allow the intended operator identities through Access. Configure specific path policies so the MCP, discovery, token, reader, image and signed SNS endpoints can reach the Worker with their own protocol credentials. The Worker also verifies the Access JWT issuer, audience and bound operator independently. [Operator access](access.md)
+4. Choose email-code sign-in in the [access guide](access.md), or configure Cloudflare Access. For the Access profile, add a Cloudflare Access application for the operator web/API and the OAuth consent route on the canonical domain. Allow the intended operator identities through Access. Configure specific path policies so the MCP, discovery, token, reader, image and signed SNS endpoints can reach the Worker with their own protocol credentials. The Worker also verifies the Access JWT issuer, audience and bound operator independently. [Operator access](access.md)
 5. Supply the deployment variables below to the environment running `cf`. Keep secret values in Worker secrets. Use separate resources and secrets for a preview deployment. The local-development bypass is absent from the deployment configuration.
 
 | Setting | Use |
@@ -28,6 +28,10 @@ Run the build and test commands in the [README](../README.md) first. A browser a
 | `TIME_ZONE`, `ARCHIVE_LAG_DAYS`, `ARCHIVE_FEED_URL` | Optional presentation and archive defaults. A message can be sent without supplying a public page, feed or release date. |
 | `AWS_REGION`, `SES_CONFIGURATION_SET`, `SNS_TOPIC_ARN` | Region, sending configuration set and exact feedback topic for this installation. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Worker secrets for the least-privilege AWS identity used to submit mail, read sending quota and confirm the SNS subscription. For temporary credentials set `NEWSMAN_AWS_TEMPORARY=yes`, configure `AWS_SESSION_TOKEN`, and rotate the temporary credential set together. |
+
+For rotating AWS role credentials, set `AWS_ROLE_ARN` and provide `AWS_WORKLOAD_KEY` as a Worker secret containing a base64-encoded PKCS#8 DER RSA private key of at least 2048 bits. Register the OIDC provider `PUBLIC_ORIGIN/workload-identity` in AWS IAM. Configure the audience `sts.amazonaws.com` and constrain the role trust to that audience and subject `newsman-worker`. The Worker publishes discovery and JWKS under that issuer and refreshes regional STS credentials before expiry. Back up the signing material in the publisher’s account. The static credential settings apply only to the alternative key-based configuration.
+
+For a pilot, set `PILOT_RECIPIENTS` to the comma-separated addresses permitted to receive any mail and restrict `ses:Recipients` in the role to the same set. Configure a positive monthly budget for controlled delivery and keep campaigns paused. Use a confirmed seed subscriber on the test-recipient list for a proof with one-click unsubscribe.
 
 Use the Workers dashboard’s Variables and Secrets settings or the CLI's Worker secret commands to install the production secrets. Verify resource names, routes and asset contents with `npm run check:deploy`. Run `npx cf deploy` from the configured build environment to publish your own instance. Bind the domain chosen in `PUBLIC_ORIGIN`. Cloudflare's scheduled trigger wakes the delivery/import worker each minute; it imposes no schedule on publication.
 

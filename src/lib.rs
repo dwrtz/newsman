@@ -3,12 +3,14 @@ mod audience;
 pub mod core;
 mod delivery;
 mod editorial;
+mod email_login;
 mod identity_ops;
 mod mcp;
 mod provider;
 mod reporting;
 mod schema;
 mod transfers;
+mod workload;
 
 use core::{Actor, AppError, Res, Tx};
 use futures_util::StreamExt;
@@ -66,7 +68,9 @@ async fn invoke(
 ) -> Res<Value> {
     let op = schema::operation(name)
         .ok_or_else(|| AppError::new("not_found", "Unknown operation.", 404))?;
-    if !actor.has(op["scope"].as_str().unwrap_or("unavailable")) {
+    if !(actor.has(op["scope"].as_str().unwrap_or("unavailable"))
+        || (op["scope"] == "reader" && actor.grant_id.is_some() && actor.has("read")))
+    {
         return Err(AppError::new(
             "permission_denied",
             "This grant cannot run that operation.",
@@ -82,7 +86,7 @@ async fn invoke(
         .map(|key| core::sha256(format!("{}\0{name}\0{key}", actor.id).as_bytes()));
     for attempt in 0..4 {
         let mut tx = Tx::begin(env, actor.clone()).await?;
-        if is_operator {
+        if is_operator || actor.grant_id.is_some() {
             access::revalidate(&tx).await?;
         }
         if let Some(h) = reader_hint
@@ -184,6 +188,22 @@ async fn route(mut req: Request, env: &Env) -> Res<Response> {
     let url = req.url()?;
     let path = url.path();
     let method = req.method();
+    if path.starts_with("/workload-identity/") {
+        return workload::discovery(&req, env);
+    }
+    if email_login::enabled(env) {
+        if path == "/login" || path.starts_with("/login/") {
+            return email_login::http(req, env).await;
+        }
+        if matches!(path, "/" | "/index.html") {
+            match access::web_actor(&req, env).await {
+                Err(e) if e.status == 401 => return email_login::signin_redirect("/"),
+                result => {
+                    result?;
+                }
+            }
+        }
+    }
     if path == "/mcp" || path == "/reader/mcp" {
         return mcp::http(req, env, path == "/reader/mcp").await;
     }
@@ -215,7 +235,7 @@ async fn route(mut req: Request, env: &Env) -> Res<Response> {
         let actor = access::web_actor(&req, env).await?;
         if path == "/api/session" && method == Method::Get {
             return Ok(Response::from_json(
-                &json!({"email":actor.email,"scopes":actor.scopes,"csrf":access::csrf(&req,env,&actor)?,"local":core::local(env)}),
+                &json!({"email":actor.email,"scopes":actor.scopes,"csrf":access::csrf(&req,env,&actor)?,"local":core::local(env),"email_login":email_login::enabled(env)}),
             )?);
         }
         if path == "/api/registry" && method == Method::Get {

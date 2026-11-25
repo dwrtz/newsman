@@ -782,6 +782,21 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
         }
         to.to_owned()
     };
+    let mut text = req_str(&q, "text")?.to_owned();
+    let mut html = req_str(&q, "html")?.to_owned();
+    let mut unsubscribe = None;
+    if source == "test"
+        && let Some(sub) = audience::lookup(tx, &recipient).await?
+        && audience::eligible(&sub)
+    {
+        let origin = crate::core::conf(tx.env, "PUBLIC_ORIGIN")
+            .unwrap_or(req_str(&settings, "public_origin")?.to_owned());
+        let proof = audience::unsubscribe_proof(&audience::proof_secret(tx.env)?, &sub);
+        let link = format!("{}/unsubscribe/{proof}", origin.trim_end_matches('/'));
+        text.push_str(&format!("\n\nUnsubscribe: {link}"));
+        html = footer(&html, &link);
+        unsubscribe = Some(link);
+    }
     Ok(Some(Mail {
         to: recipient,
         from: q["from_address"]
@@ -793,9 +808,9 @@ async fn build_mail(tx: &mut Tx<'_>, a: &Value, submit_id: &str) -> Res<Option<M
             .unwrap_or(req_str(&settings, "reply_to")?)
             .into(),
         subject: req_str(&q, "subject")?.into(),
-        text: req_str(&q, "text")?.into(),
-        html: req_str(&q, "html")?.into(),
-        unsubscribe: None,
+        text,
+        html,
+        unsubscribe,
         attempt_id: submit_id.into(),
         campaign_id: None,
     }))
