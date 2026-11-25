@@ -23,6 +23,7 @@ Run the build and test commands in the [README](../README.md) first. A browser a
 | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | Cloudflare Access team domain and application audience. |
 | `BOOTSTRAP_OPERATORS` | Comma-separated verified email addresses admitted on first setup. Manage later membership from the console or MCP. |
 | `OAUTH_CLIENTS` | JSON object mapping each approved public client ID to its exact redirect URIs. |
+| `OAUTH_CIMD_CLIENTS` | Optional JSON object mapping trusted HTTPS client metadata document URLs to exact callbacks approved for this installation. |
 | `NEWSMAN_SECRET`, `READER_PROOF_SECRET` | Separate high-entropy Worker secrets of at least 32 characters. Keep them with the installation backup. The latter authenticates reader links and suppression identifiers. |
 | `PUBLICATION_NAME`, `PUBLICATION_ORIGIN`, `FROM_ADDRESS`, `REPLY_TO` | Optional initial workspace, reader origin and sending defaults. The reader origin should route signup, confirmation, unsubscribe, media and redirects to newsman. Configure the postal footer in Settings. |
 | `TIME_ZONE`, `ARCHIVE_LAG_DAYS`, `ARCHIVE_FEED_URL` | Optional presentation and archive defaults. A message can be sent without supplying a public page, feed or release date. |

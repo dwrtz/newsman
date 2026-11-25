@@ -10,6 +10,8 @@ Build with the pinned Rust dependency lockfile and Wasm target. Use the generate
 
 With the email-code profile, test both approved inboxes and an unlisted address. Check single use, browser binding, logout, and the current allowlist for both MCP resources. Exchange one grant per resource and verify that each works only at its intended endpoint. In a recipient-restricted pilot, a signup outside the test list creates no recipient or confirmation job. Deliver a proof to an eligible seed, inspect its signed one-click headers and exercise its opt-out.
 
+Connect a hosted client using a permitted HTTPS client metadata document, an exact callback and S256. Exercise the public token exchange, refresh, tool list and a read operation. Verify issuer identification on success, denial and callback errors. A callback that differs from the configured or published URI cannot receive a code. Test negotiation with the March, June and November 2025 Streamable HTTP clients and keep anonymous discovery of protected tools behind OAuth.
+
 ## Run a one-off send (R2, R3, R4, R5, R6)
 
 1. Start an empty workspace and create a general announcement. Leave the source, archive and feed unset. Use a non-newsletter fixture such as a one-time registration notice and choose the test environment’s configured reply address.

@@ -1,4 +1,4 @@
-//! Stateless MCP Streamable HTTP, pinned to the registry's negotiated protocol revision.
+//! Stateless MCP Streamable HTTP with version negotiation for hosted and local clients.
 use crate::core::{Actor, AppError, Res};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -6,6 +6,15 @@ use std::sync::OnceLock;
 use worker::{Env, Request, Response};
 
 pub const VERSION: &str = "2025-11-25";
+const MARCH: &str = "2025-03-26";
+const VERSIONS: [&str; 3] = [VERSION, "2025-06-18", MARCH];
+
+struct Endpoint<'a> {
+    surface: &'a str,
+    scopes: &'a [String],
+    protected: bool,
+    resource_metadata: &'a str,
+}
 
 #[derive(Debug)]
 pub struct McpResponse {
@@ -50,7 +59,7 @@ fn operation_list() -> &'static [Value] {
         .expect("operations")
 }
 
-pub fn tools(surface: &str, scopes: &[String]) -> Vec<Value> {
+fn tools(endpoint: &Endpoint, version: &str) -> Vec<Value> {
     static TOOLS: OnceLock<Vec<Value>> = OnceLock::new();
     let descriptors = TOOLS.get_or_init(|| operation_list().iter().map(|op| {
         json!({"name":op["name"],"description":op["description"],
@@ -61,10 +70,31 @@ pub fn tools(surface: &str, scopes: &[String]) -> Vec<Value> {
         .iter()
         .zip(descriptors)
         .filter(|(op, _)| {
-            op["surface"] == surface
-                && (surface == "reader" || scopes.iter().any(|s| op["scope"] == s.as_str()))
+            op["surface"] == endpoint.surface
+                && (endpoint.surface == "reader"
+                    || endpoint.scopes.iter().any(|s| op["scope"] == s.as_str()))
         })
-        .map(|(_, d)| d.clone())
+        .map(|(op, descriptor)| {
+            let mut tool = descriptor.clone();
+            let schemes = if endpoint.protected {
+                let scope = if endpoint.surface == "reader" {
+                    "read"
+                } else {
+                    op["scope"].as_str().expect("operation scope")
+                };
+                json!([{"type":"oauth2","scopes":[scope]}])
+            } else {
+                json!([{"type":"noauth"}])
+            };
+            tool["securitySchemes"] = schemes.clone();
+            tool["_meta"] = json!({"securitySchemes":schemes});
+            if version == MARCH {
+                tool.as_object_mut()
+                    .expect("tool descriptor")
+                    .remove("outputSchema");
+            }
+            tool
+        })
         .collect()
 }
 
@@ -75,23 +105,18 @@ fn accepts(header: &str, mime: &str) -> bool {
         .any(|s| s.eq_ignore_ascii_case(mime))
 }
 
-/// The HTTP adapter authenticates the actor before calling this function.
-#[allow(clippy::too_many_arguments)]
-pub fn receive(
+/// Validate the transport before dispatching any message in the HTTP request.
+fn decode(
     method: &str,
     content_type: &str,
     accept: &str,
-    version: Option<&str>,
+    version: &str,
     body: &[u8],
-    surface: &str,
-    scopes: &[String],
-    resource_metadata: &str,
-) -> Incoming {
-    let reply = |response| Incoming::Reply(response);
+) -> Result<Value, McpResponse> {
     if method != "POST" {
         let mut response = McpResponse::new(405, None);
         response.headers.insert("Allow".into(), "POST".into());
-        return reply(response);
+        return Err(response);
     }
     if !content_type
         .split(';')
@@ -100,7 +125,7 @@ pub fn receive(
         .trim()
         .eq_ignore_ascii_case("application/json")
     {
-        return reply(McpResponse::protocol_error(
+        return Err(McpResponse::protocol_error(
             415,
             Value::Null,
             -32600,
@@ -108,24 +133,47 @@ pub fn receive(
         ));
     }
     if !accepts(accept, "application/json") || !accepts(accept, "text/event-stream") {
-        return reply(McpResponse::protocol_error(
+        return Err(McpResponse::protocol_error(
             406,
             Value::Null,
             -32600,
             "Accept application/json and text/event-stream",
         ));
     }
-    let message: Value = match serde_json::from_slice(body) {
-        Ok(v) => v,
-        Err(_) => {
-            return reply(McpResponse::protocol_error(
+    if !VERSIONS.contains(&version) {
+        return Err(McpResponse::protocol_error(
+            400,
+            Value::Null,
+            -32600,
+            "Unsupported MCP-Protocol-Version",
+        ));
+    }
+    let message: Value = serde_json::from_slice(body)
+        .map_err(|_| McpResponse::protocol_error(400, Value::Null, -32700, "Invalid JSON"))?;
+    if let Some(batch) = message.as_array() {
+        if version != MARCH || batch.is_empty() || batch.iter().any(|m| m["method"] == "initialize")
+        {
+            return Err(McpResponse::protocol_error(
                 400,
                 Value::Null,
-                -32700,
-                "Invalid JSON",
+                -32600,
+                "Invalid batch for this protocol revision",
             ));
         }
-    };
+        if batch.len() > 50 {
+            return Err(McpResponse::protocol_error(
+                413,
+                Value::Null,
+                -32600,
+                "Batch exceeds 50 messages",
+            ));
+        }
+    }
+    Ok(message)
+}
+
+fn receive(message: &Value, version: &str, endpoint: &Endpoint) -> Incoming {
+    let reply = Incoming::Reply;
     let id = message.get("id").cloned();
     if message["jsonrpc"] != "2.0"
         || !message["method"].is_string()
@@ -141,14 +189,6 @@ pub fn receive(
         ));
     }
     let rpc = message["method"].as_str().unwrap_or_default();
-    if rpc != "initialize" && version != Some(VERSION) {
-        return reply(McpResponse::protocol_error(
-            400,
-            id.unwrap_or(Value::Null),
-            -32600,
-            "Unsupported or missing MCP-Protocol-Version",
-        ));
-    }
     let params = &message["params"];
     if id.is_none() {
         if !rpc.starts_with("notifications/") {
@@ -178,7 +218,7 @@ pub fn receive(
             }
             reply(McpResponse::result(
                 id,
-                json!({"protocolVersion":VERSION,
+                json!({"protocolVersion":params["protocolVersion"].as_str().filter(|v| VERSIONS.contains(v)).unwrap_or(VERSION),
                 "capabilities":{"tools":{}},"serverInfo":{"name":"newsman","version":env!("CARGO_PKG_VERSION")}}),
             ))
         }
@@ -194,27 +234,35 @@ pub fn receive(
             }
             reply(McpResponse::result(
                 id,
-                json!({"tools":tools(surface,scopes)}),
+                json!({"tools":tools(endpoint,version)}),
             ))
         }
         "tools/call" => {
             let Some(op) = operation_list()
                 .iter()
-                .find(|op| op["surface"] == surface && op["name"] == params["name"])
+                .find(|op| op["surface"] == endpoint.surface && op["name"] == params["name"])
             else {
                 return reply(McpResponse::protocol_error(200, id, -32602, "Unknown tool"));
             };
-            if surface == "operator" && !scopes.iter().any(|s| op["scope"] == s.as_str()) {
-                let mut response =
-                    McpResponse::protocol_error(403, id, -32003, "Insufficient scope");
-                response.headers.insert(
-                    "WWW-Authenticate".into(),
-                    format!(
-                        r#"Bearer error="insufficient_scope", scope="{}", resource_metadata="{}""#,
-                        op["scope"].as_str().unwrap_or_default(),
-                        resource_metadata
-                    ),
+            if endpoint.surface == "operator"
+                && !endpoint.scopes.iter().any(|s| op["scope"] == s.as_str())
+            {
+                let challenge = format!(
+                    r#"Bearer error="insufficient_scope", error_description="This tool requires an additional scope", scope="{}", resource_metadata="{}""#,
+                    op["scope"].as_str().expect("operation scope"),
+                    endpoint.resource_metadata
                 );
+                let mut response = McpResponse::result(
+                    id,
+                    json!({
+                        "isError":true, "content":[{"type":"text","text":"Insufficient scope"}],
+                        "_meta":{"mcp/www_authenticate":[challenge]}
+                    }),
+                );
+                response.status = 403;
+                response
+                    .headers
+                    .insert("WWW-Authenticate".into(), challenge);
                 return reply(response);
             }
             let arguments = params
@@ -244,8 +292,12 @@ pub fn receive(
     }
 }
 
-pub fn completed(id: Value, result: Result<Value, Value>) -> McpResponse {
+fn completed(id: Value, result: Result<Value, Value>, version: &str) -> McpResponse {
     match result {
+        Ok(value) if version == MARCH => McpResponse::result(
+            id,
+            json!({"content":[{"type":"text","text":value.to_string()}]}),
+        ),
         Ok(value) => McpResponse::result(
             id,
             json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value}),
@@ -260,20 +312,32 @@ pub fn completed(id: Value, result: Result<Value, Value>) -> McpResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn endpoint<'a>(surface: &'a str, scopes: &'a [String]) -> Endpoint<'a> {
+        Endpoint {
+            surface,
+            scopes,
+            protected: surface == "operator",
+            resource_metadata: "https://news.example/metadata",
+        }
+    }
     #[test]
     fn both_surfaces_have_complete_independent_tool_sets() {
         let scope: Vec<String> = ["read", "write", "send", "admin"]
             .into_iter()
             .map(str::to_owned)
             .collect();
-        assert_eq!(tools("operator", &scope).len(), 59);
-        assert_eq!(tools("reader", &[]).len(), 5);
-        assert!(tools("operator", &["send".into()]).iter().all(|t| {
-            t["name"]
-                .as_str()
-                .is_some_and(|n| n.starts_with("send_") || n == "attempt_resolve")
-        }));
-        for d in tools("operator", &scope) {
+        assert_eq!(tools(&endpoint("operator", &scope), VERSION).len(), 59);
+        assert_eq!(tools(&endpoint("reader", &[]), VERSION).len(), 5);
+        assert!(
+            tools(&endpoint("operator", &["send".into()]), VERSION)
+                .iter()
+                .all(|t| {
+                    t["name"]
+                        .as_str()
+                        .is_some_and(|n| n.starts_with("send_") || n == "attempt_resolve")
+                })
+        );
+        for d in tools(&endpoint("operator", &scope), VERSION) {
             for schema in [&d["inputSchema"], &d["outputSchema"]] {
                 assert_eq!(schema["type"], "object");
             }
@@ -281,18 +345,7 @@ mod tests {
     }
     #[test]
     fn notification_ack_and_reader_privilege() {
-        let call = |b: Value| {
-            receive(
-                "POST",
-                "application/json",
-                "application/json, text/event-stream",
-                Some(VERSION),
-                b.to_string().as_bytes(),
-                "reader",
-                &[],
-                "https://news.example/metadata",
-            )
-        };
+        let call = |b: Value| receive(&b, VERSION, &endpoint("reader", &[]));
         let Incoming::Reply(r) =
             call(json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
         else {
@@ -306,6 +359,29 @@ mod tests {
             panic!()
         };
         assert_eq!(r.json.unwrap()["error"]["code"], -32602);
+    }
+}
+
+async fn execute_message(
+    incoming: Incoming,
+    env: &Env,
+    actor: &Actor,
+    reader: bool,
+    hint: &str,
+    version: &str,
+) -> McpResponse {
+    match incoming {
+        Incoming::Reply(reply) => reply,
+        Incoming::Invoke(call) => {
+            let result = if reader {
+                crate::invoke(env, actor.clone(), &call.name, call.arguments, Some(hint)).await
+            } else {
+                crate::execute(env, actor.clone(), &call.name, call.arguments).await
+            };
+            completed(call.id, result.map_err(|e| json!({
+                "code":e.code,"message":e.message,"retryable":e.status >= 500 || e.status == 429
+            })), version)
+        }
     }
 }
 
@@ -352,17 +428,24 @@ pub async fn http(mut req: Request, env: &Env, reader: bool) -> Res<Response> {
                     -32001,
                     "Authentication required",
                 );
-                reply.headers.insert(
-                    "WWW-Authenticate".into(),
-                    format!(r#"Bearer resource_metadata="{meta}""#),
-                );
+                let challenge = if req.headers().get("Authorization")?.is_some() {
+                    format!(
+                        r#"Bearer error="invalid_token", error_description="The bearer token is invalid for this resource", resource_metadata="{meta}""#
+                    )
+                } else {
+                    format!(r#"Bearer resource_metadata="{meta}""#)
+                };
+                reply.headers.insert("WWW-Authenticate".into(), challenge);
                 return as_http(reply);
             }
             Err(e) => return Err(e),
         }
     };
     let method = req.method().to_string();
-    let version = req.headers().get("MCP-Protocol-Version")?;
+    let version = req
+        .headers()
+        .get("MCP-Protocol-Version")?
+        .unwrap_or_else(|| MARCH.to_owned());
     let content_type = req.headers().get("Content-Type")?.unwrap_or_default();
     let accept = req.headers().get("Accept")?.unwrap_or_default();
     let hint = req.headers().get("CF-Connecting-IP")?.unwrap_or_default();
@@ -371,31 +454,39 @@ pub async fn http(mut req: Request, env: &Env, reader: bool) -> Res<Response> {
     } else {
         Vec::new()
     };
-    let surface = if reader { "reader" } else { "operator" };
-    let scopes = if reader {
-        Actor::reader().scopes
-    } else {
-        actor.scopes.clone()
+    let message = match decode(&method, &content_type, &accept, &version, &bytes) {
+        Ok(message) => message,
+        Err(error) => return as_http(error),
     };
-    match receive(
-        &method,
-        &content_type,
-        &accept,
-        version.as_deref(),
-        &bytes,
-        surface,
-        &scopes,
-        &meta,
-    ) {
-        Incoming::Reply(res) => as_http(res),
-        Incoming::Invoke(call) => {
-            let result=if reader {
-                crate::invoke(env,actor,&call.name,call.arguments,Some(&hint)).await
-            } else {
-                crate::execute(env,actor,&call.name,call.arguments).await
+    let endpoint = Endpoint {
+        surface: if reader { "reader" } else { "operator" },
+        scopes: &actor.scopes,
+        protected: !reader || crate::email_login::enabled(env),
+        resource_metadata: &meta,
+    };
+    let dispatch = |message: &Value| {
+        execute_message(
+            receive(message, &version, &endpoint),
+            env,
+            &actor,
+            reader,
+            &hint,
+            &version,
+        )
+    };
+    if let Value::Array(batch) = message {
+        let mut replies = Vec::new();
+        for item in batch {
+            if let Some(reply) = dispatch(&item).await.json {
+                replies.push(reply);
             }
-                .map_err(|e|json!({"code":e.code,"message":e.message,"retryable":e.status==429 || e.status>=500}));
-            as_http(completed(call.id, result))
         }
+        let response = if replies.is_empty() {
+            McpResponse::new(202, None)
+        } else {
+            McpResponse::new(200, Some(Value::Array(replies)))
+        };
+        return as_http(response);
     }
+    as_http(dispatch(&message).await)
 }
