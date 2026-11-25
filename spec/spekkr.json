@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -138,6 +138,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.5.1",
+      "date": "2026-11-25",
+      "note": "The publication name appears in the From header of newsletters, confirmations, reminders and operator emails. Previews and send plans show the same display name and sender address."
+    },
     {
       "version": "0.5.0",
       "date": "2026-11-25",

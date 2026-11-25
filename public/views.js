@@ -139,6 +139,10 @@ function act(name, handler) {
 function art(title) {
   return `<div class="mail-art" aria-hidden="true"><div class="envelope"><div class="env-upper"><span class="env-brand">newsman.</span><span class="env-stamp">${icon("mail")}</span></div><span class="env-lines"></span><div class="env-address">${e(title)}</div><div class="env-stripe"></div></div></div>`;
 }
+function senderLabel(message) {
+  return message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address;
+}
+
 export async function overview() {
   const [dashboard, issues] = await Promise.all([
     call("dashboard_get"),
@@ -322,7 +326,7 @@ export async function compose(id) {
         showModal(
           "Email preview",
           `<p><strong>${e(rendered.subject)}</strong></p>${detailPairs([
-            ["From", rendered.from_address],
+            ["From", senderLabel(rendered)],
             ["Reply to", rendered.reply_to],
             ["Revision", doc.version],
           ])}<div class="box-gap" id="email-frame"></div><details><summary>Plain-text email</summary><p class="preview-text">${e(rendered.plain_text)}</p></details>${(rendered.warnings || []).map((x) => `<p class="notice">${e(x)}</p>`).join("")}`,
@@ -372,7 +376,7 @@ function startSend(doc) {
     showModal(
       "Approve delivery",
       `<p><strong>${e(plan.subject)}</strong></p>${detailPairs([
-        ["From", plan.from_address],
+        ["From", senderLabel(plan)],
         ["Reply to", plan.reply_to],
         ["Due", dateTime(plan.due_at)],
         ["Expires", dateTime(plan.expires_at)],
@@ -685,7 +689,7 @@ export async function settings() {
           ? link("Operator allowlist", href("operators"), "btn", "shield")
           : "",
       ) +
-      `<section class="form-panel"><h2>Sender settings</h2><form id="settings-form" class="form-grid columns">${field("publication_name", "Workspace name", s.publication_name, { required: true })}${field("time_zone", "Time zone", s.time_zone, { required: true })}${field("public_origin", "Public site origin", s.public_origin, { type: "url", required: true })}${field("from_address", "Sender address", s.from_address, { type: "email", required: true })}${field("reply_to", "Reply-to address", s.reply_to, { type: "email", required: true })}${field("consent_version", "Consent wording version", s.consent_version, { required: true })}${field("archive_lag_days", "Archive lag in days", s.archive_lag_days, { type: "number", min: 0, required: true })}${field("send_budget", "Send budget", s.send_budget, { type: "number", min: 0, required: true, help: "A budget of 0 pauses production sends." })}${field("postal_footer", "Postal footer", s.postal_footer, { rows: 2, wide: true })}${field("test_recipients", "Allowlisted test recipients", (s.test_recipients || []).join(", "), { wide: true, help: "Separate addresses with commas." })}<label class="bool wide"><input type="checkbox" name="click_tracking" ${s.click_tracking ? "checked" : ""}> Enable click tracking</label>${can("settings_update") ? formActions("Save settings") : ""}</form></section>`,
+      `<section class="form-panel"><h2>Sender settings</h2><form id="settings-form" class="form-grid columns">${field("publication_name", "Publication name", s.publication_name, { required: true, help: "Readers see this name as the email sender." })}${field("time_zone", "Time zone", s.time_zone, { required: true })}${field("public_origin", "Public site origin", s.public_origin, { type: "url", required: true })}${field("from_address", "Sender address", s.from_address, { type: "email", required: true })}${field("reply_to", "Reply-to address", s.reply_to, { type: "email", required: true })}${field("consent_version", "Consent wording version", s.consent_version, { required: true })}${field("archive_lag_days", "Archive lag in days", s.archive_lag_days, { type: "number", min: 0, required: true })}${field("send_budget", "Send budget", s.send_budget, { type: "number", min: 0, required: true, help: "A budget of 0 pauses production sends." })}${field("postal_footer", "Postal footer", s.postal_footer, { rows: 2, wide: true })}${field("test_recipients", "Allowlisted test recipients", (s.test_recipients || []).join(", "), { wide: true, help: "Separate addresses with commas." })}<label class="bool wide"><input type="checkbox" name="click_tracking" ${s.click_tracking ? "checked" : ""}> Enable click tracking</label>${can("settings_update") ? formActions("Save settings") : ""}</form></section>`,
     mount() {
       submit("#settings-form", async (v) => {
         await call("settings_update", {

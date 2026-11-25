@@ -1,6 +1,6 @@
 [package]
 name = "newsman"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 description = "Self-hosted email publishing with a native HTTP MCP server on Cloudflare Workers and Amazon SES"

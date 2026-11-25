@@ -183,7 +183,10 @@ async fn request_code(env: &Env, email: &str, next: &str) -> Res<Response> {
     tx.put("login_challenge",&id,json!({"email":email,"digest":digest(env,&id,&code)?,"tries":0,"next":next_path(next),"expires_s":at+CODE_TTL}))?;
     let settings = crate::editorial::settings(&tx).await?;
     let mail = Mail {
-        from: req_str(&settings, "from_address")?.into(),
+        from: crate::provider::sender_mailbox(
+            settings["publication_name"].as_str(),
+            req_str(&settings, "from_address")?,
+        ),
         reply_to: req_str(&settings, "reply_to")?.into(),
         to: email,
         subject: "Your newsman sign-in code".into(),

@@ -712,7 +712,7 @@ fn render_snapshot(issue: &Value, prefs: &Value, hero: Option<&str>) -> Res<Valu
             "Rendered message exceeds its size limit.",
         ));
     }
-    let mut view = json!({"subject":draft["subject"],"from_address":prefs["from_address"],"reply_to":prefs["reply_to"],
+    let mut view = json!({"subject":draft["subject"],"from_name":prefs["publication_name"],"from_address":prefs["from_address"],"reply_to":prefs["reply_to"],
         "preheader":preheader,"html":html,"plain_text":plain,"warnings":warnings});
     let digest = sha256(&serde_json::to_vec(&view)?);
     view["digest"] = json!(digest);

@@ -664,6 +664,9 @@
     "subject": {
      "$ref": "#/$defs/subject"
     },
+    "from_name": {
+     "$ref": "#/$defs/name"
+    },
     "from_address": {
      "$ref": "#/$defs/email"
     },
@@ -830,6 +833,9 @@
     },
     "subject": {
      "$ref": "#/$defs/subject"
+    },
+    "from_name": {
+     "$ref": "#/$defs/name"
     },
     "from_address": {
      "$ref": "#/$defs/email"
