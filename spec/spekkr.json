@@ -2,7 +2,7 @@
   "spekkr": 1,
   "id": "dwrtz/newsman",
   "name": "newsman",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "kind": "web app",
   "author": {
     "id": "dwrtz",
@@ -137,6 +137,11 @@
     ]
   },
   "changelog": [
+    {
+      "version": "0.4.2",
+      "date": "2026-11-25",
+      "note": "Browser consent returns to the exact registered connector callback through a separate GET. Connectors can redirect to their canonical host, and a spent consent form explains how to reconnect."
+    },
     {
       "version": "0.4.1",
       "date": "2026-11-25",

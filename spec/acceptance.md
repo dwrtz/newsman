@@ -12,7 +12,7 @@ With the email-code profile, test both approved inboxes and an unlisted address.
 
 Connect a hosted client using a permitted HTTPS client metadata document, an exact callback and S256. Exercise the public token exchange, refresh, tool list and a read operation. Verify issuer identification on success, denial and callback errors. A callback that differs from the configured or published URI cannot receive a code. Test negotiation with the March, June and November 2025 Streamable HTTP clients and keep anonymous discovery of protected tools behind OAuth.
 
-Start a fresh browser at the authorization URL. Submit the native email and code forms, approve consent, follow the redirect to a different registered origin and use the code to read the issue list. Repeat the consent step with Deny and verify that the callback receives the original state and an access-denied error. Sign out from the console and check that the browser session has ended. Let the browser generate its own request headers throughout.
+Start a fresh browser at the authorization URL. Submit the native email and code forms, approve consent and use the returned code to read the issue list. Test a direct callback and a registered callback that redirects to its connector's canonical host with HTTP 308. The connector receives a GET at each hop, with the original state and issuer and no referrer. The code can be exchanged once using the originally registered URI. Repeat with Deny and verify that the callback receives an access-denied error and no code. A resubmitted consent form offers a fresh connection. Sign out from the console and check that the browser session has ended. Let the browser generate its own request headers throughout.
 
 ## Run a one-off send (R2, R3, R4, R5, R6)
 

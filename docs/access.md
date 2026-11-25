@@ -36,6 +36,8 @@ Configure `OAUTH_CIMD_CLIENTS` with the HTTPS client document as the key and the
 
 Sign in to Newsman with an approved operator email and review the requested scopes. Both hosted clients use the authorization code flow with S256. A client secret is unnecessary for this profile.
 
+After you select **Allow**, the browser returns to the connector. If it pauses on **Returning to your connector**, select **Continue to your connector**. If Newsman says the form was already submitted or expired, start a fresh connection from the app’s connector settings. An earlier consent tab can only be used once.
+
 ## Connect a client
 
 1. Configure the remote Streamable HTTP server URL `https://news.example/mcp` and the pre-registered client ID and callback. The resource metadata is at `/.well-known/oauth-protected-resource/mcp`. The issuer publishes its authorization server metadata at `/.well-known/oauth-authorization-server`. The metadata endpoints work without cookies.

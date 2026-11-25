@@ -163,17 +163,66 @@ async fn authorize_page(req: &Request, env: &Env, canonical: &str) -> Res<Respon
         scopes = esc(&scopes.join(", ")),
         callback = esc(callback)
     );
-    let callback_origin = Url::parse(callback)
-        .map_err(|_| config_error())?
-        .origin()
-        .ascii_serialization();
     let mut res = Response::from_html(page)?;
     res.headers_mut().set("Cache-Control", "no-store")?;
     res.headers_mut().set(
         "Content-Security-Policy",
-        &format!("default-src 'none'; frame-ancestors 'none'; form-action 'self' {callback_origin}; base-uri 'none'"),
+        "default-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
     )?;
     crate::form_with_origin(res)
+}
+
+fn consent_result(req: &Request, callback: Option<&Url>) -> Res<Response> {
+    const RESTART: &str = "This authorization form was already submitted or has expired. Return to your connector and start a new connection.";
+    let navigation = req.headers().get("Sec-Fetch-Mode")?.as_deref() == Some("navigate")
+        || req
+            .headers()
+            .get("Accept")?
+            .unwrap_or_default()
+            .split(',')
+            .any(|range| {
+                range
+                    .split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .eq_ignore_ascii_case("text/html")
+            });
+    if !navigation {
+        return match callback {
+            Some(url) => redirect(url),
+            None => oauth_error("invalid_request", RESTART),
+        };
+    }
+    // A form-action policy applies to the entire HTTP redirect chain, including a connector's
+    // own redirects. Finish the POST here, then navigate to the exact registered callback by GET.
+    let (status, title, refresh, body) = match callback {
+        Some(url) => {
+            let url = esc(url.as_str());
+            (
+                200,
+                "Returning to your connector",
+                format!(r#"<meta http-equiv="refresh" content="0;url={url}">"#),
+                format!(r#"<a rel="noreferrer" href="{url}">Continue to your connector</a>"#),
+            )
+        }
+        None => (
+            400,
+            "Start a new connection",
+            String::new(),
+            RESTART.to_owned(),
+        ),
+    };
+    let mut res = Response::from_html(format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{title}</title>{refresh}</head><body><main><h1>{title}</h1><p>{body}</p></main></body></html>"#
+    ))?.with_status(status);
+    res.headers_mut().set("Cache-Control", "no-store")?;
+    res.headers_mut().set("Referrer-Policy", "no-referrer")?;
+    res.headers_mut().set(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
+    )?;
+    Ok(res)
 }
 async fn decision(
     req: &Request,
@@ -202,7 +251,7 @@ async fn decision(
     let Some(p) = tx.get("oauth_consent", &cid).await?.filter(|p| {
         p["operator_id"] == actor.id && p["expires_s"].as_i64().is_some_and(|v| v > seconds())
     }) else {
-        return oauth_error("invalid_request", "The authorization request has expired");
+        return consent_result(req, None);
     };
     if !registered(
         env,
@@ -246,7 +295,7 @@ async fn decision(
         }
     }
     tx.commit().await?;
-    redirect(&callback)
+    consent_result(req, Some(&callback))
 }
 async fn token(
     req: &Request,
