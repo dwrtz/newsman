@@ -1,5 +1,7 @@
 # newsman
 
+[![Built from a Spekkr spec](https://img.shields.io/badge/built%20from-Spekkr%20spec-f0442b)](https://spekkr.com/dwrtz/newsman/)
+
 Self-host an opt-in email workspace on Cloudflare Workers. Write a product update, invite contacts to an event, or publish a newsletter. Send one message now or choose its own delivery time. Amazon SES handles outbound email. An existing site or public archive is optional.
 
 **The full web console is also an HTTP MCP server.** A remote client with the appropriate grant can draft and preview messages, upload files, manage an audience, schedule sends, export results, or administer the installation. The Rust Worker dispatches both interfaces through the same 59 operator operations. Five public, proof-scoped reader operations handle subscriptions. [Spekkr build specification](https://spekkr.com/dwrtz/newsman/) · [Operation registry](spec/operations.json)
